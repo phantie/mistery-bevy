@@ -1,7 +1,9 @@
 #![allow(dead_code, unused_imports)]
 use std::borrow::BorrowMut;
 
-// use bevy::diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin};
+// TODO fix pause screen might not be in front of the whole scene
+
+use bevy::diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin};
 use bevy::prelude::*;
 use bevy::sprite::MaterialMesh2dBundle;
 
@@ -17,27 +19,32 @@ enum AppState {
 
 fn main() {
     #[derive(SystemLabel)]
-    enum Startup {
+    enum Label {
         SetupCamera,
         SpawnPlayer,
     }
 
     App::new()
         .add_plugins(DefaultPlugins)
-        .add_state(AppState::InGame)
+        
         .insert_resource(ClearColor(Color::DARK_GRAY))
-        .add_startup_system(set_up_camera.label(Startup::SetupCamera))
-        .add_startup_system(spawn_player.label(Startup::SpawnPlayer))
-        .add_system_set(SystemSet::on_enter(AppState::PauseScreen).with_system(setup_pause_screen))
-        .add_system_set(SystemSet::on_exit(AppState::PauseScreen).with_system(close_pause_screen))
-        // .add_plugin(LogDiagnosticsPlugin::default())
-        // .add_plugin(FrameTimeDiagnosticsPlugin::default())
-        .add_system(bevy::window::close_on_esc)
-        // .add_system(change_name)
-        // .add_system(debug_player)
-        .add_system(pause_screen_trigger)
+        
+        .add_startup_system(set_up_camera)
+        .add_startup_system(spawn_player)
+
+        .add_state(AppState::InGame)
         // move player only when InGame
         .add_system_set(SystemSet::on_update(AppState::InGame).with_system(player_control))
+
+        .add_system(pause_screen_trigger)
+        .add_system_set(SystemSet::on_enter(AppState::PauseScreen).with_system(setup_pause_screen))
+        .add_system_set(SystemSet::on_exit(AppState::PauseScreen).with_system(close_pause_screen))
+
+        // .add_plugin(LogDiagnosticsPlugin::default())
+        // .add_plugin(FrameTimeDiagnosticsPlugin::default())
+
+        .add_system(bevy::window::close_on_esc)
+
         .run();
 }
 
@@ -118,7 +125,6 @@ fn player_control(keys: Res<Input<KeyCode>>, mut query: Query<&mut Transform, Wi
     }
 }
 
-// TODO fix pause screen might not be in front of the whole scene
 #[derive(Debug, Component)]
 struct PauseScreen;
 
@@ -146,10 +152,10 @@ fn pause_screen_trigger(keys: Res<Input<KeyCode>>, mut app_state: ResMut<State<A
     if keys.just_pressed(KeyCode::M) {
         match app_state.current() {
             AppState::InGame => {
-                app_state.set(AppState::PauseScreen).unwrap();
+                app_state.push(AppState::PauseScreen).unwrap();
             }
             AppState::PauseScreen => {
-                app_state.set(AppState::InGame).unwrap();
+                app_state.pop().unwrap();
             }
         }
     }
