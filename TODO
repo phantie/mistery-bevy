@@ -1,0 +1,12 @@
+Iteration #1
+
++ there's a 2D level
++    player can move in it
+
++ you may pause a game
++    when it's paused you see a pause screen
+
+there're NPC like objects
+    to some you can trigger dialog window if in close proximity
+        if it's triggered - you can close the window
+        dialog may have several paths it flows
