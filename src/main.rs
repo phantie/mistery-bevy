@@ -52,15 +52,19 @@ fn set_up_camera(mut commands: Commands) {
 struct Player;
 
 #[derive(Debug, Component)]
-struct Name(String);
+struct Name {
+    pub value: String,
+}
 
 impl Name {
-    fn new(name: impl Into<String>) -> Self {
-        Self(name.into())
+    fn new(value: impl Into<String>) -> Self {
+        Self {
+            value: value.into(),
+        }
     }
 
-    fn set(&mut self, name: impl Into<String>) {
-        self.0 = name.into();
+    fn set(&mut self, value: impl Into<String>) {
+        self.value = value.into();
     }
 }
 
@@ -112,7 +116,6 @@ fn spawn_player(
 //         .remove::<Name>()
 //         .insert(Name::from("Alex"));
 // }
-
 
 // fn change_player_name(mut query: Query<&mut Name, With<Player>>) {
 //     let mut name = query.single_mut();
