@@ -39,6 +39,8 @@ fn main() {
         // .add_plugin(LogDiagnosticsPlugin::default())
         // .add_plugin(FrameTimeDiagnosticsPlugin::default())
         .add_system(bevy::window::close_on_esc)
+        // .add_system(change_player_name)
+        // .add_system(debug_player)
         .run();
 }
 
@@ -49,18 +51,31 @@ fn set_up_camera(mut commands: Commands) {
 #[derive(Debug, Component)]
 struct Player;
 
-impl PlayerName {
+#[derive(Debug, Component)]
+struct Name(String);
+
+impl Name {
     fn new(name: impl AsRef<str>) -> Self {
         Self(name.as_ref().to_owned())
     }
+
+    fn set(&mut self, name: impl AsRef<str>) {
+        self.0 = name.as_ref().to_owned();
+    }
 }
 
-#[derive(Debug, Component)]
-struct PlayerName(String);
+impl<T> From<T> for Name
+where
+    T: AsRef<str>,
+{
+    fn from(value: T) -> Self {
+        Self::new(value)
+    }
+}
 
 #[derive(Bundle)]
 struct PlayerBundle {
-    name: PlayerName,
+    name: Name,
     model: MaterialMesh2dBundle<ColorMaterial>,
     _p: Player,
 }
@@ -71,7 +86,7 @@ fn spawn_player(
     mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
     commands.spawn(PlayerBundle {
-        name: PlayerName::new("Player"),
+        name: "Player".into(),
         _p: Player,
         model: MaterialMesh2dBundle {
             mesh: meshes.add(shape::Circle::new(50.).into()).into(),
@@ -85,18 +100,23 @@ fn spawn_player(
 }
 
 // fn debug_player(
-//     // access resource
-//     query: Query<&PlayerName>,
+//     query: Query<&Name>,
 // ) {
 //     let player_name = query.single();
 //     info!("Player name: {:?}", player_name);
 // }
 
-// fn change_name(mut commands: Commands, query: Query<Entity, With<PlayerName>>) {
+// fn change_player_name(mut commands: Commands, query: Query<Entity, With<Name>>) {
 //     commands
 //         .entity(query.single())
-//         .remove::<PlayerName>()
-//         .insert(PlayerName::new("Alex"));
+//         .remove::<Name>()
+//         .insert(Name::from("Alex"));
+// }
+
+
+// fn change_player_name(mut query: Query<&mut Name, With<Player>>) {
+//     let mut name = query.single_mut();
+//     name.set("Alex");
 // }
 
 fn player_control(
