@@ -55,18 +55,18 @@ struct Player;
 struct Name(String);
 
 impl Name {
-    fn new(name: impl AsRef<str>) -> Self {
-        Self(name.as_ref().to_owned())
+    fn new(name: impl Into<String>) -> Self {
+        Self(name.into())
     }
 
-    fn set(&mut self, name: impl AsRef<str>) {
-        self.0 = name.as_ref().to_owned();
+    fn set(&mut self, name: impl Into<String>) {
+        self.0 = name.into();
     }
 }
 
 impl<T> From<T> for Name
 where
-    T: AsRef<str>,
+    T: Into<String>,
 {
     fn from(value: T) -> Self {
         Self::new(value)
