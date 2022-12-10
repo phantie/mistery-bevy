@@ -132,25 +132,17 @@ fn player_control(
         translation.y -= diagonal_magnitude;
         translation.x += diagonal_magnitude;
     }
-    if up {
-        if !(left || right) {
-            translation.y += magnitude;
-        }
+    if up && !(left || right) {
+        translation.y += magnitude;
     }
-    if left {
-        if !(up || down) {
-            translation.x -= magnitude;
-        }
+    if left && !(up || down) {
+        translation.x -= magnitude;
     }
-    if down {
-        if !(left || right) {
-            translation.y -= magnitude;
-        }
+    if down && !(left || right) {
+        translation.y -= magnitude;
     }
-    if right {
-        if !(up || down) {
-            translation.x += magnitude;
-        }
+    if right && !(up || down) {
+        translation.x += magnitude;
     }
 }
 
