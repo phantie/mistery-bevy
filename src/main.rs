@@ -1,5 +1,6 @@
 #![allow(dead_code, unused_imports)]
 use std::borrow::BorrowMut;
+use std::f32::consts::SQRT_2;
 
 // TODO fix pause screen might not be in front of the whole scene
 
@@ -26,25 +27,18 @@ fn main() {
 
     App::new()
         .add_plugins(DefaultPlugins)
-        
         .insert_resource(ClearColor(Color::DARK_GRAY))
-        
         .add_startup_system(set_up_camera)
         .add_startup_system(spawn_player)
-
         .add_state(AppState::InGame)
         // move player only when InGame
         .add_system_set(SystemSet::on_update(AppState::InGame).with_system(player_control))
-
         .add_system(pause_screen_trigger)
         .add_system_set(SystemSet::on_enter(AppState::PauseScreen).with_system(setup_pause_screen))
         .add_system_set(SystemSet::on_exit(AppState::PauseScreen).with_system(close_pause_screen))
-
         // .add_plugin(LogDiagnosticsPlugin::default())
         // .add_plugin(FrameTimeDiagnosticsPlugin::default())
-
         .add_system(bevy::window::close_on_esc)
-
         .run();
 }
 
@@ -105,23 +99,58 @@ fn spawn_player(
 //         .insert(PlayerName::new("Alex"));
 // }
 
-fn player_control(keys: Res<Input<KeyCode>>, mut query: Query<&mut Transform, With<Player>>) {
+fn player_control(
+    time: Res<Time>,
+    keys: Res<Input<KeyCode>>,
+    mut query: Query<&mut Transform, With<Player>>,
+) {
     let mut transfrom = query.single_mut();
     let mut translation = transfrom.translation.borrow_mut();
 
-    let magnitude = 5.;
+    let multiplier = 250.;
+    let magnitude = multiplier * time.delta_seconds();
+    let diagonal_magnitude = magnitude / SQRT_2;
 
-    if keys.any_pressed([KeyCode::W, KeyCode::Up]) {
-        translation.y += magnitude;
+    let up = keys.any_pressed([KeyCode::W, KeyCode::Up]);
+    let left = keys.any_pressed([KeyCode::A, KeyCode::Left]);
+    let down = keys.any_pressed([KeyCode::S, KeyCode::Down]);
+    let right = keys.any_pressed([KeyCode::D, KeyCode::Right]);
+
+    if up && left {
+        translation.y += diagonal_magnitude;
+        translation.x -= diagonal_magnitude;
     }
-    if keys.any_pressed([KeyCode::A, KeyCode::Left]) {
-        translation.x -= magnitude;
+    if up && right {
+        translation.y += diagonal_magnitude;
+        translation.x += diagonal_magnitude;
     }
-    if keys.any_pressed([KeyCode::S, KeyCode::Down]) {
-        translation.y -= magnitude;
+    if down && left {
+        translation.y -= diagonal_magnitude;
+        translation.x -= diagonal_magnitude;
     }
-    if keys.any_pressed([KeyCode::D, KeyCode::Right]) {
-        translation.x += magnitude;
+    if down && right {
+        translation.y -= diagonal_magnitude;
+        translation.x += diagonal_magnitude;
+    }
+    if up {
+        if !(left || right) {
+            translation.y += magnitude;
+        }
+    }
+    if left {
+        if !(up || down) {
+            translation.x -= magnitude;
+        }
+    }
+    if down {
+        if !(left || right) {
+            translation.y -= magnitude;
+        }
+    }
+    if right {
+        if !(up || down) {
+            translation.x += magnitude;
+        }
     }
 }
 
