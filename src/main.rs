@@ -9,7 +9,7 @@ use bevy::prelude::*;
 use bevy::sprite::MaterialMesh2dBundle;
 use bevy::utils::{HashMap, HashSet};
 use std::borrow::BorrowMut;
-use std::f32::consts::{SQRT_2, PI};
+use std::f32::consts::{PI, SQRT_2};
 
 mod unused_systems;
 use crate::unused_systems::*;
@@ -132,7 +132,6 @@ fn spawn_player(
     mut materials: ResMut<Assets<ColorMaterial>>,
     // asset_server: Res<AssetServer>,
 ) {
-
     commands.spawn(PlayerBundle {
         name: "Player".into(),
         _p: Player,
@@ -286,12 +285,12 @@ fn next_to_npc_event_handler(
     // next_to_obj: Res<ProximityToObjResource>,
 ) {
     for ev in ev_next_to_obj.iter() {
-        for (entity, name) in &npcs {
-            if entity == ev.entity {
-                info!("Next to NPC {}", name.value);
-                nearest_npc_in_proximity.value.push(entity);
-            }
-        }
+        let entity = ev.entity;
+        let name = npcs.get_component::<Name>(entity).unwrap();
+
+        nearest_npc_in_proximity.value.push(entity);
+
+        info!("Next to NPC {}", name.value);
     }
 
     // let min_dist = next_to_obj
@@ -315,22 +314,22 @@ fn next_to_npc_event_handler(
 
 fn away_from_npc_event_handler(
     mut ev_away_from_obj: EventReader<AwayFromObjEvent>,
-    query: Query<(Entity, &Name), With<NPC>>,
+    npcs: Query<(Entity, &Name), With<NPC>>,
     mut nearest_npc_in_proximity: ResMut<NearestNPCinProximity>,
     // next_to_obj: Res<ProximityToObjResource>,
 ) {
     for ev in ev_away_from_obj.iter() {
-        for (entity, name) in &query {
-            if entity == ev.entity {
-                info!("Away from NPC {}", name.value);
-                let idx = nearest_npc_in_proximity
-                    .value
-                    .iter()
-                    .position(|&e| e == entity)
-                    .unwrap();
-                nearest_npc_in_proximity.value.remove(idx);
-            }
-        }
+        let entity = ev.entity;
+        let name = npcs.get_component::<Name>(entity).unwrap();
+
+        let idx = nearest_npc_in_proximity
+            .value
+            .iter()
+            .position(|&e| e == entity)
+            .unwrap();
+        nearest_npc_in_proximity.value.remove(idx);
+
+        info!("Away from NPC {}", name.value);
     }
 
     // let min_dist = next_to_obj
@@ -376,7 +375,6 @@ fn player_movement(
     // }
 
     let mut translation = transform.translation.borrow_mut();
-
 
     if up && left {
         translation.y += diagonal_magnitude;
@@ -465,7 +463,7 @@ fn setup_dialog_window(mut commands: Commands) {
                 custom_size: Some(Vec2::new(800.0, 200.0)),
                 ..default()
             },
-            transform: Transform::from_xyz(0., -300., 0.),
+            transform: Transform::from_xyz(0., -200., 0.),
             ..default()
         },
         _dw: DialogWindow,
