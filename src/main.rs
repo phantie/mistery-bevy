@@ -9,7 +9,7 @@ use bevy::prelude::*;
 use bevy::sprite::MaterialMesh2dBundle;
 use bevy::utils::{HashMap, HashSet};
 use std::borrow::BorrowMut;
-use std::f32::consts::SQRT_2;
+use std::f32::consts::{SQRT_2, PI};
 
 mod unused_systems;
 use crate::unused_systems::*;
@@ -100,6 +100,7 @@ where
 struct PlayerBundle {
     name: Name,
     model: MaterialMesh2dBundle<ColorMaterial>,
+    // model: SpriteBundle,
     _p: Player,
 }
 
@@ -129,7 +130,9 @@ fn spawn_player(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
+    // asset_server: Res<AssetServer>,
 ) {
+
     commands.spawn(PlayerBundle {
         name: "Player".into(),
         _p: Player,
@@ -139,6 +142,14 @@ fn spawn_player(
             transform: Transform::from_translation(Vec3::ZERO),
             ..default()
         },
+        // model: SpriteBundle {
+        //     texture: asset_server.load("character.png"),
+        //     transform: Transform {
+        //         scale: Vec3::splat(0.12),
+        //         ..default()
+        //     },
+        //     ..default()
+        // },
     });
 
     info!("Spawning a player");
@@ -347,8 +358,7 @@ fn player_movement(
     keys: Res<Input<KeyCode>>,
     mut query: Query<&mut Transform, With<Player>>,
 ) {
-    let mut transfrom = query.single_mut();
-    let mut translation = transfrom.translation.borrow_mut();
+    let mut transform = query.single_mut();
 
     let multiplier = 250.;
     let magnitude = multiplier * time.delta_seconds();
@@ -358,6 +368,15 @@ fn player_movement(
     let left = keys.any_pressed([KeyCode::A, KeyCode::Left]);
     let down = keys.any_pressed([KeyCode::S, KeyCode::Down]);
     let right = keys.any_pressed([KeyCode::D, KeyCode::Right]);
+
+    // if left {
+    //     transform.rotation = Quat::from_rotation_y(PI);
+    // } else if right {
+    //     transform.rotation = Quat::default();
+    // }
+
+    let mut translation = transform.translation.borrow_mut();
+
 
     if up && left {
         translation.y += diagonal_magnitude;
