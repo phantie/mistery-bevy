@@ -1,10 +1,13 @@
 // TODO fix pause screen might not be in front of the whole scene
+// TODO current implementation of NPC proximity does not take into
+//     account lengths when several objects are considered to be in proximity
+//     now, the "closest object" is the latest object detected to be in proximity
 
 #![allow(dead_code, unused_imports)]
 use bevy::diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin};
 use bevy::prelude::*;
 use bevy::sprite::MaterialMesh2dBundle;
-use bevy::utils::HashMap;
+use bevy::utils::{HashMap, HashSet};
 use std::borrow::BorrowMut;
 use std::f32::consts::SQRT_2;
 
@@ -16,6 +19,7 @@ enum AppState {
     // MainMenu,
     InGame,
     PauseScreen,
+    DialogWindow,
 }
 
 fn main() {
@@ -23,6 +27,8 @@ fn main() {
     enum Label {
         SetupCamera,
         SpawnPlayer,
+        NextToNPCEventHandler,
+        AwayFromNPCEventHandler,
     }
 
     App::new()
@@ -31,18 +37,24 @@ fn main() {
         .add_startup_system(set_up_camera)
         .add_startup_system(spawn_player)
         .add_startup_system(spawn_npcs)
-        .insert_resource(ProximityToNPCsResource::default())
+        .insert_resource(ProximityToObjResource::default())
+        .insert_resource(NearestNPCinProximity { value: vec![] })
         .add_system(next_to_obj_watcher)
         .add_event::<NextToObjEvent>()
         .add_event::<AwayFromObjEvent>()
-        .add_system(next_to_npc_event_handler)
-        .add_system(away_from_npc_event_handler)
+        .add_system(away_from_npc_event_handler.label(Label::AwayFromNPCEventHandler))
+        .add_system(next_to_npc_event_handler.after(Label::AwayFromNPCEventHandler))
         .add_state(AppState::InGame)
         // move player only when InGame
-        .add_system_set(SystemSet::on_update(AppState::InGame).with_system(player_control))
+        .add_system_set(SystemSet::on_update(AppState::InGame).with_system(player_movement))
         .add_system(pause_screen_trigger)
         .add_system_set(SystemSet::on_enter(AppState::PauseScreen).with_system(setup_pause_screen))
         .add_system_set(SystemSet::on_exit(AppState::PauseScreen).with_system(close_pause_screen))
+        .add_system(dialog_window_trigger)
+        .add_system_set(
+            SystemSet::on_enter(AppState::DialogWindow).with_system(setup_dialog_window),
+        )
+        .add_system_set(SystemSet::on_exit(AppState::DialogWindow).with_system(close_dialog_window))
         // .add_plugin(LogDiagnosticsPlugin::default())
         // .add_plugin(FrameTimeDiagnosticsPlugin::default())
         .add_system(bevy::window::close_on_esc)
@@ -187,12 +199,18 @@ fn spawn_npcs(mut commands: Commands) {
     info!("Spawning NPC");
 }
 
+// TODO remove key-value pair when entity despawns
 #[derive(Resource)]
-struct ProximityToNPCsResource {
-    values: HashMap<Entity, bool>,
+struct ProximityToObjResource {
+    values: HashMap<Entity, (bool, f32)>,
 }
 
-impl Default for ProximityToNPCsResource {
+#[derive(Resource)]
+struct NearestNPCinProximity {
+    value: Vec<Entity>,
+}
+
+impl Default for ProximityToObjResource {
     fn default() -> Self {
         Self {
             values: HashMap::new(),
@@ -210,43 +228,38 @@ struct AwayFromObjEvent {
 fn next_to_obj_watcher(
     rel_obj_transforms: Query<(Entity, &Transform, &InProximity)>,
     player_transform: Query<&Transform, With<Player>>,
-    mut next_to_obj: ResMut<ProximityToNPCsResource>,
+    mut next_to_obj: ResMut<ProximityToObjResource>,
     mut ev_next_to_obj: EventWriter<NextToObjEvent>,
     mut ev_away_from_obj: EventWriter<AwayFromObjEvent>,
 ) {
     let player_transform = player_transform.single();
 
-    fn is_in_proximity(
-        player_transform: &Transform,
-        rel_obj_transform: &Transform,
-        in_proximity: &InProximity,
-    ) -> bool {
-        let next_to_when_distance_is_less_than = in_proximity.edge_distance;
-
-        rel_obj_transform
-            .translation
-            .distance(player_transform.translation)
-            < next_to_when_distance_is_less_than
-    }
-
     for (entity, obj_transform, in_proximity) in &rel_obj_transforms {
         let next_to = next_to_obj.values.get(&entity);
 
-        if is_in_proximity(&player_transform, obj_transform, in_proximity) {
+        let distance_to_object = obj_transform
+            .translation
+            .distance(player_transform.translation);
+
+        if distance_to_object < in_proximity.edge_distance {
             match next_to {
-                None | Some(false) => {
-                    next_to_obj.values.insert(entity, true);
+                None | Some((false, _)) => {
+                    next_to_obj
+                        .values
+                        .insert(entity, (true, distance_to_object));
                     ev_next_to_obj.send(NextToObjEvent { entity });
                 }
-                Some(true) => (),
+                Some((true, _)) => (),
             }
         } else {
             match next_to {
-                Some(true) => {
-                    next_to_obj.values.insert(entity, false);
+                Some((true, _)) => {
+                    next_to_obj
+                        .values
+                        .insert(entity, (false, distance_to_object));
                     ev_away_from_obj.send(AwayFromObjEvent { entity });
                 }
-                Some(false) => (),
+                Some((false, _)) => (),
                 // if you never've been close don't send AwayFrom event
                 // not sure if the same should apply to NextTo event
                 None => (),
@@ -257,50 +270,79 @@ fn next_to_obj_watcher(
 
 fn next_to_npc_event_handler(
     mut ev_next_to_obj: EventReader<NextToObjEvent>,
-    query: Query<(Entity, &Name), With<NPC>>,
+    npcs: Query<(Entity, &Name), With<NPC>>,
+    mut nearest_npc_in_proximity: ResMut<NearestNPCinProximity>,
+    // next_to_obj: Res<ProximityToObjResource>,
 ) {
     for ev in ev_next_to_obj.iter() {
-        for (entity, name) in &query {
+        for (entity, name) in &npcs {
             if entity == ev.entity {
                 info!("Next to NPC {}", name.value);
+                nearest_npc_in_proximity.value.push(entity);
             }
         }
     }
+
+    // let min_dist = next_to_obj
+    //     .values
+    //     .iter()
+    //     .filter(|(_, (b, _))| *b == true)
+    //     .fold(f32::INFINITY, |a, (_, (_, b))| a.min(*b));
+
+    // let item = next_to_obj
+    //     .values
+    //     .iter()
+    //     .filter(|(_, (b, dist))| *b == true && *dist == min_dist)
+    //     .map(|(e, _)| *e)
+    //     .next();
+
+    // match item {
+    //     None => nearest_npc_in_proximity.value = None,
+    //     Some(entity) => nearest_npc_in_proximity.value = Some(entity),
+    // }
 }
 
 fn away_from_npc_event_handler(
     mut ev_away_from_obj: EventReader<AwayFromObjEvent>,
     query: Query<(Entity, &Name), With<NPC>>,
+    mut nearest_npc_in_proximity: ResMut<NearestNPCinProximity>,
+    // next_to_obj: Res<ProximityToObjResource>,
 ) {
     for ev in ev_away_from_obj.iter() {
         for (entity, name) in &query {
             if entity == ev.entity {
                 info!("Away from NPC {}", name.value);
+                let idx = nearest_npc_in_proximity
+                    .value
+                    .iter()
+                    .position(|&e| e == entity)
+                    .unwrap();
+                nearest_npc_in_proximity.value.remove(idx);
             }
         }
     }
+
+    // let min_dist = next_to_obj
+    //     .values
+    //     .iter()
+    //     .filter(|(_, (b, _))| *b == true)
+    //     // .min_by_key(|(_, (_, dist))| dist);
+    //     .fold(f32::INFINITY, |a, (_, (_, b))| a.min(*b));
+
+    // let item = next_to_obj
+    //     .values
+    //     .iter()
+    //     .filter(|(_, (b, dist))| *b == true && *dist == min_dist)
+    //     .map(|(e, _)| *e)
+    //     .next();
+
+    // match item {
+    //     None => nearest_npc_in_proximity.value = None,
+    //     Some(entity) => nearest_npc_in_proximity.value = Some(entity),
+    // }
 }
 
-// fn debug_player(
-//     query: Query<&Name>,
-// ) {
-//     let player_name = query.single();
-//     info!("Player name: {:?}", player_name);
-// }
-
-// fn change_player_name(mut commands: Commands, query: Query<Entity, With<Name>>) {
-//     commands
-//         .entity(query.single())
-//         .remove::<Name>()
-//         .insert(Name::from("Alex"));
-// }
-
-// fn change_player_name(mut query: Query<&mut Name, With<Player>>) {
-//     let mut name = query.single_mut();
-//     name.set("Alex");
-// }
-
-fn player_control(
+fn player_movement(
     time: Res<Time>,
     keys: Res<Input<KeyCode>>,
     mut query: Query<&mut Transform, With<Player>>,
@@ -347,7 +389,7 @@ fn player_control(
     }
 }
 
-#[derive(Debug, Component)]
+#[derive(Component)]
 struct PauseScreen;
 
 #[derive(Bundle)]
@@ -373,7 +415,7 @@ fn setup_pause_screen(mut commands: Commands) {
 fn pause_screen_trigger(keys: Res<Input<KeyCode>>, mut app_state: ResMut<State<AppState>>) {
     if keys.just_pressed(KeyCode::M) {
         match app_state.current() {
-            AppState::InGame => {
+            AppState::InGame | AppState::DialogWindow => {
                 app_state.push(AppState::PauseScreen).unwrap();
             }
             AppState::PauseScreen => {
@@ -385,4 +427,53 @@ fn pause_screen_trigger(keys: Res<Input<KeyCode>>, mut app_state: ResMut<State<A
 
 fn close_pause_screen(mut commands: Commands, query: Query<Entity, With<PauseScreen>>) {
     commands.entity(query.single()).despawn();
+}
+
+#[derive(Component)]
+struct DialogWindow;
+
+#[derive(Bundle)]
+struct DialogWindowBundle {
+    sprite: SpriteBundle,
+    _dw: DialogWindow,
+}
+
+fn setup_dialog_window(mut commands: Commands) {
+    commands.spawn(DialogWindowBundle {
+        sprite: SpriteBundle {
+            sprite: Sprite {
+                color: Color::OLIVE,
+                custom_size: Some(Vec2::new(800.0, 200.0)),
+                ..default()
+            },
+            transform: Transform::from_xyz(0., -300., 0.),
+            ..default()
+        },
+        _dw: DialogWindow,
+    });
+}
+
+fn close_dialog_window(mut commands: Commands, query: Query<Entity, With<DialogWindow>>) {
+    commands.entity(query.single()).despawn();
+}
+
+fn dialog_window_trigger(
+    keys: Res<Input<KeyCode>>,
+    mut app_state: ResMut<State<AppState>>,
+    nearest_npc_in_proximity: Res<NearestNPCinProximity>,
+) {
+    if keys.just_pressed(KeyCode::E) {
+        match app_state.current() {
+            AppState::InGame => {
+                if !nearest_npc_in_proximity.value.is_empty() {
+                    //
+                    app_state.push(AppState::DialogWindow).unwrap();
+                }
+            }
+            AppState::DialogWindow => {
+                app_state.pop().unwrap();
+            }
+            AppState::PauseScreen => (),
+        }
+    }
 }
