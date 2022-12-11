@@ -455,7 +455,18 @@ struct DialogWindowBundle {
     _dw: DialogWindow,
 }
 
-fn setup_dialog_window(mut commands: Commands) {
+#[derive(Component)]
+struct NameDialogText;
+
+fn setup_dialog_window(
+    mut commands: Commands,
+    npcs: Query<(Entity, &Name), With<NPC>>,
+    nearest_npc_in_proximity: Res<NearestNPCinProximity>,
+    asset_server: Res<AssetServer>,
+) {
+    let entity = nearest_npc_in_proximity.value.last().unwrap().clone();
+    let name = npcs.get_component::<Name>(entity).unwrap();
+
     commands.spawn(DialogWindowBundle {
         sprite: SpriteBundle {
             sprite: Sprite {
@@ -468,10 +479,41 @@ fn setup_dialog_window(mut commands: Commands) {
         },
         _dw: DialogWindow,
     });
+
+    let text = format!("I'm {}", name.value);
+
+    commands.spawn((
+        // Create a TextBundle that has a Text with a single section.
+        TextBundle::from_section(
+            // Accepts a `String` or any type that converts into a `String`, such as `&str`
+            text.as_str(),
+            TextStyle {
+                font: asset_server.load("fonts/OpenSans.ttf"),
+                font_size: 100.0,
+                color: Color::WHITE,
+            },
+        ) // Set the alignment of the Text
+        .with_text_alignment(TextAlignment::TOP_CENTER)
+        // Set the style of the TextBundle itself.
+        .with_style(Style {
+            position_type: PositionType::Absolute,
+            position: UiRect {
+                bottom: Val::Px(150.0),
+                left: Val::Px(300.0),
+                ..default()
+            },
+            ..default()
+        }),
+        NameDialogText,
+    ));
 }
 
-fn close_dialog_window(mut commands: Commands, query: Query<Entity, With<DialogWindow>>) {
-    commands.entity(query.single()).despawn();
+fn close_dialog_window(mut commands: Commands,
+    dialog_window: Query<Entity, With<DialogWindow>>,
+    name_dialog_text: Query<Entity, With<NameDialogText>>,
+) {
+    commands.entity(dialog_window.single()).despawn();
+    commands.entity(name_dialog_text.single()).despawn();
 }
 
 fn dialog_window_trigger(
