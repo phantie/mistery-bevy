@@ -58,8 +58,6 @@ fn main() {
         // .add_plugin(LogDiagnosticsPlugin::default())
         // .add_plugin(FrameTimeDiagnosticsPlugin::default())
         .add_system(bevy::window::close_on_esc)
-        // .add_system(change_player_name)
-        // .add_system(debug_player)
         .run();
 }
 
@@ -209,7 +207,7 @@ fn spawn_npcs(mut commands: Commands) {
     info!("Spawning NPC");
 }
 
-// TODO remove key-value pair when entity despawns
+// TODO "maybe" remove key-value pair when entity despawns
 #[derive(Resource)]
 struct ProximityToObjResource {
     values: HashMap<Entity, (bool, f32)>,
@@ -219,6 +217,19 @@ struct ProximityToObjResource {
 struct NearestNPCinProximity {
     value: Vec<Entity>,
 }
+
+impl NearestNPCinProximity {
+    // nearest is considered to be the latest one, joining a stack
+    fn get(&self) -> Option<&Entity> {
+        self.value.last()
+    }
+
+    // check if there's "any" npc in proximity
+    fn any(&self) -> bool {
+        self.value.is_empty()
+    }
+}
+
 
 impl Default for ProximityToObjResource {
     fn default() -> Self {
@@ -464,7 +475,7 @@ fn setup_dialog_window(
     nearest_npc_in_proximity: Res<NearestNPCinProximity>,
     asset_server: Res<AssetServer>,
 ) {
-    let entity = nearest_npc_in_proximity.value.last().unwrap().clone();
+    let entity = nearest_npc_in_proximity.get().unwrap().clone();
     let name = npcs.get_component::<Name>(entity).unwrap();
 
     commands.spawn(DialogWindowBundle {
@@ -524,8 +535,7 @@ fn dialog_window_trigger(
     if keys.just_pressed(KeyCode::E) {
         match app_state.current() {
             AppState::InGame => {
-                if !nearest_npc_in_proximity.value.is_empty() {
-                    //
+                if !nearest_npc_in_proximity.any() {
                     app_state.push(AppState::DialogWindow).unwrap();
                 }
             }
