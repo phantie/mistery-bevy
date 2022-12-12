@@ -230,7 +230,6 @@ impl NearestNPCinProximity {
     }
 }
 
-
 impl Default for ProximityToObjResource {
     fn default() -> Self {
         Self {
@@ -293,7 +292,6 @@ fn next_to_npc_event_handler(
     mut ev_next_to_obj: EventReader<NextToObjEvent>,
     npcs: Query<(Entity, &Name), With<NPC>>,
     mut nearest_npc_in_proximity: ResMut<NearestNPCinProximity>,
-    // next_to_obj: Res<ProximityToObjResource>,
 ) {
     for ev in ev_next_to_obj.iter() {
         let entity = ev.entity;
@@ -303,31 +301,12 @@ fn next_to_npc_event_handler(
 
         info!("Next to NPC {}", name.value);
     }
-
-    // let min_dist = next_to_obj
-    //     .values
-    //     .iter()
-    //     .filter(|(_, (b, _))| *b == true)
-    //     .fold(f32::INFINITY, |a, (_, (_, b))| a.min(*b));
-
-    // let item = next_to_obj
-    //     .values
-    //     .iter()
-    //     .filter(|(_, (b, dist))| *b == true && *dist == min_dist)
-    //     .map(|(e, _)| *e)
-    //     .next();
-
-    // match item {
-    //     None => nearest_npc_in_proximity.value = None,
-    //     Some(entity) => nearest_npc_in_proximity.value = Some(entity),
-    // }
 }
 
 fn away_from_npc_event_handler(
     mut ev_away_from_obj: EventReader<AwayFromObjEvent>,
     npcs: Query<(Entity, &Name), With<NPC>>,
     mut nearest_npc_in_proximity: ResMut<NearestNPCinProximity>,
-    // next_to_obj: Res<ProximityToObjResource>,
 ) {
     for ev in ev_away_from_obj.iter() {
         let entity = ev.entity;
@@ -342,25 +321,6 @@ fn away_from_npc_event_handler(
 
         info!("Away from NPC {}", name.value);
     }
-
-    // let min_dist = next_to_obj
-    //     .values
-    //     .iter()
-    //     .filter(|(_, (b, _))| *b == true)
-    //     // .min_by_key(|(_, (_, dist))| dist);
-    //     .fold(f32::INFINITY, |a, (_, (_, b))| a.min(*b));
-
-    // let item = next_to_obj
-    //     .values
-    //     .iter()
-    //     .filter(|(_, (b, dist))| *b == true && *dist == min_dist)
-    //     .map(|(e, _)| *e)
-    //     .next();
-
-    // match item {
-    //     None => nearest_npc_in_proximity.value = None,
-    //     Some(entity) => nearest_npc_in_proximity.value = Some(entity),
-    // }
 }
 
 fn player_movement(
@@ -519,7 +479,8 @@ fn setup_dialog_window(
     ));
 }
 
-fn close_dialog_window(mut commands: Commands,
+fn close_dialog_window(
+    mut commands: Commands,
     dialog_window: Query<Entity, With<DialogWindow>>,
     name_dialog_text: Query<Entity, With<NameDialogText>>,
 ) {
