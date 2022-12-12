@@ -2,6 +2,9 @@
 // TODO current implementation of NPC proximity does not take into
 //     account lengths when several objects are considered to be in proximity
 //     now, the "closest object" is the latest object detected to be in proximity
+// TODO fix transition MainMenu <=> InGame(in stack)
+//     now you can see the player and NPCs when MainMenu is triggered
+
 
 #![allow(dead_code, unused_imports)]
 use bevy::diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin};
@@ -16,7 +19,7 @@ use crate::unused_systems::*;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 enum AppState {
-    // MainMenu,
+    MainMenu,
     InGame,
     PauseScreen,
     DialogWindow,
@@ -44,6 +47,7 @@ fn main() {
         .add_event::<AwayFromObjEvent>()
         .add_system(away_from_npc_event_handler.label(Label::AwayFromNPCEventHandler))
         .add_system(next_to_npc_event_handler.after(Label::AwayFromNPCEventHandler))
+        // TODO fix transitions from and into MainMenu state
         .add_state(AppState::InGame)
         // move player only when InGame
         .add_system_set(SystemSet::on_update(AppState::InGame).with_system(player_movement))
@@ -55,6 +59,9 @@ fn main() {
             SystemSet::on_enter(AppState::DialogWindow).with_system(setup_dialog_window),
         )
         .add_system_set(SystemSet::on_exit(AppState::DialogWindow).with_system(close_dialog_window))
+        .add_system(main_menu_trigger)
+        .add_system_set(SystemSet::on_enter(AppState::MainMenu).with_system(setup_main_menu))
+        .add_system_set(SystemSet::on_exit(AppState::MainMenu).with_system(close_main_menu))
         // .add_plugin(LogDiagnosticsPlugin::default())
         // .add_plugin(FrameTimeDiagnosticsPlugin::default())
         .add_system(bevy::window::close_on_esc)
@@ -226,7 +233,7 @@ impl NearestNPCinProximity {
 
     // check if there's "any" npc in proximity
     fn any(&self) -> bool {
-        self.value.is_empty()
+        !self.value.is_empty()
     }
 }
 
@@ -409,6 +416,7 @@ fn pause_screen_trigger(keys: Res<Input<KeyCode>>, mut app_state: ResMut<State<A
             AppState::PauseScreen => {
                 app_state.pop().unwrap();
             }
+            AppState::MainMenu => (),
         }
     }
 }
@@ -496,14 +504,61 @@ fn dialog_window_trigger(
     if keys.just_pressed(KeyCode::E) {
         match app_state.current() {
             AppState::InGame => {
-                if !nearest_npc_in_proximity.any() {
+                if nearest_npc_in_proximity.any() {
                     app_state.push(AppState::DialogWindow).unwrap();
                 }
             }
             AppState::DialogWindow => {
                 app_state.pop().unwrap();
             }
-            AppState::PauseScreen => (),
+            AppState::PauseScreen | AppState::MainMenu => (),
+        }
+    }
+}
+
+#[derive(Component)]
+struct MainMenu;
+
+#[derive(Bundle)]
+struct MainMenuBundle {
+    sprite: SpriteBundle,
+    _mm: MainMenu,
+}
+
+fn setup_main_menu(mut commands: Commands) {
+    commands.spawn(MainMenuBundle {
+        sprite: SpriteBundle {
+            sprite: Sprite {
+                color: Color::INDIGO,
+                custom_size: Some(Vec2::new(400.0, 300.0)),
+                ..default()
+            },
+            ..default()
+        },
+        _mm: MainMenu,
+    });
+}
+
+fn close_main_menu(mut commands: Commands, mm: Query<Entity, With<MainMenu>>) {
+    commands.entity(mm.single()).despawn();
+}
+
+// TODO main menu will not be triggered by just pressing of a button
+// the way to go to main menu should be through "PauseScreen"
+fn main_menu_trigger(keys: Res<Input<KeyCode>>, mut app_state: ResMut<State<AppState>>) {
+    if keys.just_pressed(KeyCode::Tab) {
+        match app_state.current() {
+            // unless its an initial state, make it possible to trigger only from PauseScreen
+            AppState::PauseScreen => {
+                app_state.push(AppState::MainMenu).unwrap();
+            }
+            AppState::MainMenu => match app_state.pop() {
+                Ok(_) => (),
+                Err(_) => app_state.set(AppState::InGame).unwrap(),
+            }
+            state @ (AppState::InGame | AppState::DialogWindow) => {
+                warn!("can't go to the main menu from {:?}", state);
+            }
         }
     }
 }
