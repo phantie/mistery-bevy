@@ -49,7 +49,7 @@ fn main() {
         .add_system(away_from_npc_event_handler.label(Label::AwayFromNPCEventHandler))
         .add_system(next_to_npc_event_handler.after(Label::AwayFromNPCEventHandler))
         // TODO fix transitions from and into MainMenu state
-        .add_state(AppState::MainMenu)
+        .add_state(AppState::InGame)
         // NOTE now it's run only once because even MainMenu does not replace state,
         //    but stacks on top of everything
         //    so run criteria is useless
@@ -592,7 +592,7 @@ impl Stacking {
 
 impl Into<Transform> for Stacking {
     fn into(self) -> Transform {
-        Transform::from_xyz(0., 0., self.sorting())
+        self.from_xy(0., 0.)
     }
 }
 
