@@ -42,7 +42,7 @@ fn main() {
         .insert_resource(ClearColor(Color::DARK_GRAY))
         .add_startup_system(set_up_camera)
         .insert_resource(ProximityToObjResource::default())
-        .insert_resource(NearestNPCinProximity { value: vec![] })
+        .insert_resource(NearestNPCinProximity::default())
         .add_event::<NextToObjEvent>()
         .add_event::<AwayFromObjEvent>()
         .add_system(away_from_npc_event_handler.label(Label::AwayFromNPCEventHandler))
@@ -54,7 +54,6 @@ fn main() {
                 .with_system(spawn_player)
                 .label(Label::SpawnPlayer),
         )
-        // NOT see SystemSet with spawn_player (above)
         .add_system_set(
             SystemSet::on_enter(AppState::InGame)
                 .with_system(spawn_npcs)
@@ -63,6 +62,17 @@ fn main() {
         .add_system_set(SystemSet::on_update(AppState::InGame).with_system(next_to_obj_watcher))
         // move player only when InGame
         .add_system_set(SystemSet::on_update(AppState::InGame).with_system(player_movement))
+        .add_system_set(
+            SystemSet::on_exit(AppState::InGame).with_system(despawn_all_recursive::<LevelUnload>),
+        )
+        .add_system_set(
+            SystemSet::on_exit(AppState::InGame)
+                .with_system(clean_resource::<ProximityToObjResource>),
+        )
+        .add_system_set(
+            SystemSet::on_exit(AppState::InGame)
+                .with_system(clean_resource::<NearestNPCinProximity>),
+        )
         .add_system(pause_screen_trigger)
         .add_system_set(SystemSet::on_enter(AppState::PauseScreen).with_system(setup_pause_screen))
         .add_system_set(SystemSet::on_exit(AppState::PauseScreen).with_system(close_pause_screen))
@@ -72,9 +82,6 @@ fn main() {
         )
         .add_system_set(SystemSet::on_exit(AppState::DialogWindow).with_system(close_dialog_window))
         .add_system(button_main_menu_trigger)
-        .add_system_set(
-            SystemSet::on_exit(AppState::InGame).with_system(despawn_all_recursive::<LevelUnload>),
-        )
         .add_system_set(SystemSet::on_enter(AppState::MainMenu).with_system(setup_main_menu))
         .add_system_set(
             SystemSet::on_exit(AppState::MainMenu)
@@ -266,21 +273,32 @@ fn spawn_npcs(mut commands: Commands) {
     info!("Spawning NPC");
 }
 
-// TODO "maybe" remove key-value pair when entity despawns
-#[derive(Resource)]
+trait ResourceClean: Resource {
+    fn clean(&mut self);
+}
+
+impl ResourceClean for ProximityToObjResource {
+    fn clean(&mut self) {
+        self.values.clear()
+    }
+}
+
+impl ResourceClean for NearestNPCinProximity {
+    fn clean(&mut self) {
+        self.value.clear()
+    }
+}
+
+fn clean_resource<T: ResourceClean>(mut resource: ResMut<T>) {
+    resource.clean()
+}
+
+#[derive(Resource, Default)]
 struct ProximityToObjResource {
     values: HashMap<Entity, (bool, f32)>,
 }
 
-// TODO clean this when entities despawn
-// RELATED BUG:
-//         go to NPC
-//         stay close to it
-//         trigger PauseScreen (press M), then MainMenu (press Tab)
-//         close MainMenu (press Tab)
-//         trigger DialogWindow check (press E)
-//         get panic
-#[derive(Resource)]
+#[derive(Resource, Default)]
 struct NearestNPCinProximity {
     value: Vec<Entity>,
 }
@@ -294,14 +312,6 @@ impl NearestNPCinProximity {
     // check if there's "any" npc in proximity
     fn any(&self) -> bool {
         !self.value.is_empty()
-    }
-}
-
-impl Default for ProximityToObjResource {
-    fn default() -> Self {
-        Self {
-            values: HashMap::new(),
-        }
     }
 }
 
