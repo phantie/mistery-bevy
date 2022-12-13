@@ -1,5 +1,5 @@
 run:
-	cargo run --bin mistery
+	RUST_LOG="mistery=debug" cargo run --bin mistery
 
 t:
 	cargo run --bin testing

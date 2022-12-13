@@ -4,10 +4,12 @@
 //     now, the "closest object" is the latest object detected to be in proximity
 // TODO fix transition MainMenu <=> InGame(in stack)
 //     now you can see the player and NPCs when MainMenu is triggered
-
+// OPINION it's not worth playing with entity visibility or despawning
+//     when you can just hide them under main menu canvas, will see
 
 #![allow(dead_code, unused_imports)]
 use bevy::diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin};
+use bevy::ecs::schedule::ShouldRun;
 use bevy::prelude::*;
 use bevy::sprite::MaterialMesh2dBundle;
 use bevy::utils::{HashMap, HashSet};
@@ -32,23 +34,43 @@ fn main() {
         SpawnPlayer,
         NextToNPCEventHandler,
         AwayFromNPCEventHandler,
+        NextToObjectWatcher,
+        SpawnNPCs,
     }
 
     App::new()
         .add_plugins(DefaultPlugins)
         .insert_resource(ClearColor(Color::DARK_GRAY))
         .add_startup_system(set_up_camera)
-        .add_startup_system(spawn_player)
-        .add_startup_system(spawn_npcs)
         .insert_resource(ProximityToObjResource::default())
         .insert_resource(NearestNPCinProximity { value: vec![] })
-        .add_system(next_to_obj_watcher)
         .add_event::<NextToObjEvent>()
         .add_event::<AwayFromObjEvent>()
         .add_system(away_from_npc_event_handler.label(Label::AwayFromNPCEventHandler))
         .add_system(next_to_npc_event_handler.after(Label::AwayFromNPCEventHandler))
         // TODO fix transitions from and into MainMenu state
-        .add_state(AppState::InGame)
+        .add_state(AppState::MainMenu)
+        // NOTE now it's run only once because even MainMenu does not replace state,
+        //    but stacks on top of everything
+        //    so run criteria is useless
+        .add_system_set(
+            SystemSet::on_enter(AppState::InGame)
+                .with_system(spawn_player)
+                .with_run_criteria(not_spawned::<Player>)
+                .label(Label::SpawnPlayer),
+        )
+        // NOT see SystemSet with spawn_player (above)
+        .add_system_set(
+            SystemSet::on_enter(AppState::InGame)
+                .with_system(spawn_npcs)
+                .with_run_criteria(not_spawned::<NPC>)
+                .label(Label::SpawnNPCs),
+        )
+        .add_system_set(SystemSet::on_update(AppState::InGame).with_system(next_to_obj_watcher))
+        // .add_system_set(SystemSet::on_enter(AppState::MainMenu).with_system(hide_player))
+        // .add_system_set(SystemSet::on_exit(AppState::MainMenu).with_system(show_player))
+        // .add_system_set(SystemSet::on_enter(AppState::MainMenu).with_system(hide_npcs))
+        // .add_system_set(SystemSet::on_exit(AppState::MainMenu).with_system(show_npcs))
         // move player only when InGame
         .add_system_set(SystemSet::on_update(AppState::InGame).with_system(player_movement))
         .add_system(pause_screen_trigger)
@@ -59,7 +81,7 @@ fn main() {
             SystemSet::on_enter(AppState::DialogWindow).with_system(setup_dialog_window),
         )
         .add_system_set(SystemSet::on_exit(AppState::DialogWindow).with_system(close_dialog_window))
-        .add_system(main_menu_trigger)
+        .add_system(button_main_menu_trigger)
         .add_system_set(SystemSet::on_enter(AppState::MainMenu).with_system(setup_main_menu))
         .add_system_set(SystemSet::on_exit(AppState::MainMenu).with_system(close_main_menu))
         // .add_plugin(LogDiagnosticsPlugin::default())
@@ -117,12 +139,6 @@ struct InProximity {
     edge_distance: f32,
 }
 
-// #[derive(Component)]
-// struct TalkTo;
-
-// #[derive(Component)]
-// struct Interact;
-
 #[derive(Bundle)]
 struct NPCBundle {
     name: Name,
@@ -155,8 +171,33 @@ fn spawn_player(
         //     ..default()
         // },
     });
-
     info!("Spawning a player");
+}
+
+fn not_spawned<T: Component>(components: Query<With<T>>) -> ShouldRun {
+    if components.is_empty() {
+        ShouldRun::Yes
+    } else {
+        ShouldRun::No
+    }
+}
+
+fn despawn_all_recursive<T: Component>(mut commands: Commands, q: Query<Entity, With<T>>) {
+    for e in q.iter() {
+        commands.entity(e).despawn_recursive();
+    }
+}
+
+fn hide_all<T: Component>(mut components: Query<&mut Visibility, With<T>>) {
+    for mut visibility in components.iter_mut() {
+        visibility.is_visible = false;
+    }
+}
+
+fn show_all<T: Component>(mut components: Query<&mut Visibility, With<T>>) {
+    for mut visibility in components.iter_mut() {
+        visibility.is_visible = true;
+    }
 }
 
 fn spawn_npcs(mut commands: Commands) {
@@ -401,6 +442,7 @@ fn setup_pause_screen(mut commands: Commands) {
                 custom_size: Some(Vec2::new(100.0, 100.0)),
                 ..default()
             },
+            transform: Stacking::PauseScreen.into(),
             ..default()
         },
         _ps: PauseScreen,
@@ -453,7 +495,7 @@ fn setup_dialog_window(
                 custom_size: Some(Vec2::new(800.0, 200.0)),
                 ..default()
             },
-            transform: Transform::from_xyz(0., -200., 0.),
+            transform: Stacking::DialogWindow.from_xy(0., -200.),
             ..default()
         },
         _dw: DialogWindow,
@@ -525,6 +567,35 @@ struct MainMenuBundle {
     _mm: MainMenu,
 }
 
+enum Stacking {
+    InGame,
+    DialogWindow,
+    PauseScreen,
+    MainMenu,
+}
+
+impl Stacking {
+    fn sorting(self) -> f32 {
+        let z = match self {
+            Self::InGame => 0,
+            Self::DialogWindow => 1,
+            Self::PauseScreen => 2,
+            Self::MainMenu => 3,
+        } as f32;
+        z
+    }
+
+    fn from_xy(self, x: f32, y: f32) -> Transform {
+        Transform::from_xyz(x, y, self.sorting())
+    }
+}
+
+impl Into<Transform> for Stacking {
+    fn into(self) -> Transform {
+        Transform::from_xyz(0., 0., self.sorting())
+    }
+}
+
 fn setup_main_menu(mut commands: Commands) {
     commands.spawn(MainMenuBundle {
         sprite: SpriteBundle {
@@ -533,6 +604,7 @@ fn setup_main_menu(mut commands: Commands) {
                 custom_size: Some(Vec2::new(400.0, 300.0)),
                 ..default()
             },
+            transform: Stacking::MainMenu.into(),
             ..default()
         },
         _mm: MainMenu,
@@ -543,19 +615,31 @@ fn close_main_menu(mut commands: Commands, mm: Query<Entity, With<MainMenu>>) {
     commands.entity(mm.single()).despawn();
 }
 
-// TODO main menu will not be triggered by just pressing of a button
-// the way to go to main menu should be through "PauseScreen"
-fn main_menu_trigger(keys: Res<Input<KeyCode>>, mut app_state: ResMut<State<AppState>>) {
+fn button_main_menu_trigger(keys: Res<Input<KeyCode>>, mut app_state: ResMut<State<AppState>>) {
     if keys.just_pressed(KeyCode::Tab) {
+        debug!("current state {:?}", app_state.current());
         match app_state.current() {
             // unless its an initial state, make it possible to trigger only from PauseScreen
             AppState::PauseScreen => {
                 app_state.push(AppState::MainMenu).unwrap();
             }
+            // enter InGame
+            // AppState::MainMenu => {
+            //     app_state.pop().unwrap();
+            //     // app_state.set(AppState::InGame).unwrap();
+            //     debug!("current state {:?}", app_state.current());
+            // }
             AppState::MainMenu => match app_state.pop() {
-                Ok(_) => (),
-                Err(_) => app_state.set(AppState::InGame).unwrap(),
-            }
+                Ok(_) => {
+                    debug!("ok");
+                    debug!("current state {:?}", app_state.current());
+                }
+                Err(_) => {
+                    debug!("err");
+                    debug!("current state {:?}", app_state.current());
+                    app_state.set(AppState::InGame).unwrap()
+                }
+            },
             state @ (AppState::InGame | AppState::DialogWindow) => {
                 warn!("can't go to the main menu from {:?}", state);
             }
