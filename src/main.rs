@@ -73,15 +73,15 @@ fn main() {
             SystemSet::on_exit(AppState::InGame)
                 .with_system(clean_resource::<NearestNPCinProximity>),
         )
-        .add_system(pause_screen_trigger)
+        .add_system(keyboard_pause_screen_trigger)
         .add_system_set(SystemSet::on_enter(AppState::PauseScreen).with_system(setup_pause_screen))
         .add_system_set(SystemSet::on_exit(AppState::PauseScreen).with_system(close_pause_screen))
-        .add_system(dialog_window_trigger)
+        .add_system(keyboard_dialog_window_trigger)
         .add_system_set(
             SystemSet::on_enter(AppState::DialogWindow).with_system(setup_dialog_window),
         )
         .add_system_set(SystemSet::on_exit(AppState::DialogWindow).with_system(close_dialog_window))
-        .add_system(button_main_menu_trigger)
+        .add_system(keyboard_main_menu_trigger)
         .add_system_set(SystemSet::on_enter(AppState::MainMenu).with_system(setup_main_menu))
         .add_system_set(
             SystemSet::on_exit(AppState::MainMenu)
@@ -478,20 +478,6 @@ fn setup_pause_screen(mut commands: Commands) {
     });
 }
 
-fn pause_screen_trigger(keys: Res<Input<KeyCode>>, mut app_state: ResMut<State<AppState>>) {
-    if keys.just_pressed(KeyCode::M) {
-        match app_state.current() {
-            AppState::InGame | AppState::DialogWindow => {
-                app_state.push(AppState::PauseScreen).unwrap();
-            }
-            AppState::PauseScreen => {
-                app_state.pop().unwrap();
-            }
-            AppState::MainMenu => (),
-        }
-    }
-}
-
 fn close_pause_screen(mut commands: Commands, query: Query<Entity, With<PauseScreen>>) {
     commands.entity(query.single()).despawn();
 }
@@ -567,26 +553,6 @@ fn close_dialog_window(
     commands.entity(name_dialog_text.single()).despawn();
 }
 
-fn dialog_window_trigger(
-    keys: Res<Input<KeyCode>>,
-    mut app_state: ResMut<State<AppState>>,
-    nearest_npc_in_proximity: Res<NearestNPCinProximity>,
-) {
-    if keys.just_pressed(KeyCode::E) {
-        match app_state.current() {
-            AppState::InGame => {
-                if nearest_npc_in_proximity.any() {
-                    app_state.push(AppState::DialogWindow).unwrap();
-                }
-            }
-            AppState::DialogWindow => {
-                app_state.pop().unwrap();
-            }
-            AppState::PauseScreen | AppState::MainMenu => (),
-        }
-    }
-}
-
 #[derive(Component)]
 struct MainMenu;
 
@@ -643,20 +609,69 @@ fn setup_main_menu(mut commands: Commands) {
     });
 }
 
-fn button_main_menu_trigger(keys: Res<Input<KeyCode>>, mut app_state: ResMut<State<AppState>>) {
+fn main_menu_trigger(mut app_state: ResMut<State<AppState>>) {
+    match app_state.current() {
+        // unless its an initial state, make it possible to trigger only from PauseScreen
+        AppState::PauseScreen => {
+            app_state.replace(AppState::MainMenu).unwrap();
+        }
+        AppState::MainMenu => {
+            app_state.replace(AppState::InGame).unwrap();
+        }
+        state @ (AppState::InGame | AppState::DialogWindow) => {
+            warn!("can't go to the main menu from {:?}", state);
+        }
+    }
+}
+
+fn keyboard_main_menu_trigger(keys: Res<Input<KeyCode>>, app_state: ResMut<State<AppState>>) {
     if keys.just_pressed(KeyCode::Tab) {
         debug!("current state {:?}", app_state.current());
-        match app_state.current() {
-            // unless its an initial state, make it possible to trigger only from PauseScreen
-            AppState::PauseScreen => {
-                app_state.replace(AppState::MainMenu).unwrap();
-            }
-            AppState::MainMenu => {
-                app_state.replace(AppState::InGame).unwrap();
-            }
-            state @ (AppState::InGame | AppState::DialogWindow) => {
-                warn!("can't go to the main menu from {:?}", state);
+        main_menu_trigger(app_state);
+    }
+}
+
+fn pause_screen_trigger(mut app_state: ResMut<State<AppState>>) {
+    match app_state.current() {
+        AppState::InGame | AppState::DialogWindow => {
+            app_state.push(AppState::PauseScreen).unwrap();
+        }
+        AppState::PauseScreen => {
+            app_state.pop().unwrap();
+        }
+        AppState::MainMenu => (),
+    }
+}
+
+fn keyboard_pause_screen_trigger(keys: Res<Input<KeyCode>>, app_state: ResMut<State<AppState>>) {
+    if keys.just_pressed(KeyCode::M) {
+        pause_screen_trigger(app_state);
+    }
+}
+
+fn dialog_window_trigger(
+    mut app_state: ResMut<State<AppState>>,
+    nearest_npc_in_proximity: Res<NearestNPCinProximity>,
+) {
+    match app_state.current() {
+        AppState::InGame => {
+            if nearest_npc_in_proximity.any() {
+                app_state.push(AppState::DialogWindow).unwrap();
             }
         }
+        AppState::DialogWindow => {
+            app_state.pop().unwrap();
+        }
+        AppState::PauseScreen | AppState::MainMenu => (),
+    }
+}
+
+fn keyboard_dialog_window_trigger(
+    keys: Res<Input<KeyCode>>,
+    app_state: ResMut<State<AppState>>,
+    nearest_npc_in_proximity: Res<NearestNPCinProximity>,
+) {
+    if keys.just_pressed(KeyCode::E) {
+        dialog_window_trigger(app_state, nearest_npc_in_proximity);
     }
 }
