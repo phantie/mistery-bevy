@@ -26,17 +26,17 @@ enum AppState {
     DialogWindow,
 }
 
-fn main() {
-    #[derive(SystemLabel)]
-    enum Label {
-        SetupCamera,
-        SpawnPlayer,
-        NextToNPCEventHandler,
-        AwayFromNPCEventHandler,
-        NextToObjectWatcher,
-        SpawnNPCs,
-    }
+#[derive(SystemLabel)]
+enum Label {
+    SetupCamera,
+    SpawnPlayer,
+    NextToNPCEventHandler,
+    AwayFromNPCEventHandler,
+    NextToObjectWatcher,
+    SpawnNPCs,
+}
 
+fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
         .insert_resource(ClearColor(Color::DARK_GRAY))
@@ -141,6 +141,25 @@ struct PlayerBundle {
     _unload: LevelUnload,
 }
 
+impl PlayerBundle {
+    fn new(model: MaterialMesh2dBundle<ColorMaterial>) -> Self {
+        Self {
+            name: "Player".into(),
+            model: model,
+            _unload: LevelUnload,
+            _identity: Player,
+            // model: SpriteBundle {
+            //     texture: asset_server.load("character.png"),
+            //     transform: Transform {
+            //         scale: Vec3::splat(0.12),
+            //         ..default()
+            //     },
+            //     ..default()
+            // },
+        }
+    }
+}
+
 #[derive(Component)]
 struct NPC;
 
@@ -159,31 +178,53 @@ struct NPCBundle {
     _unload: LevelUnload,
 }
 
+trait TransformExt {
+    fn from_xy(x: f32, y: f32) -> Self;
+}
+
+impl TransformExt for Transform {
+    fn from_xy(x: f32, y: f32) -> Self {
+        Self::from_xyz(x, y, 0.)
+    }
+}
+
+impl NPCBundle {
+    fn new(name: impl Into<Name>, transform: Transform) -> Self {
+        Self {
+            name: name.into(),
+            in_proximity: InProximity {
+                edge_distance: 150.,
+            },
+            model: SpriteBundle {
+                sprite: Sprite {
+                    color: Color::rgb(0.25, 0.25, 0.75),
+                    custom_size: Some(Vec2::new(100., 100.)),
+                    ..default()
+                },
+                transform,
+                ..default()
+            },
+            _identity: NPC,
+            _unload: LevelUnload,
+        }
+    }
+}
+
 fn spawn_player(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
     // asset_server: Res<AssetServer>,
 ) {
-    commands.spawn(PlayerBundle {
-        name: "Player".into(),
-        model: MaterialMesh2dBundle {
-            mesh: meshes.add(shape::Circle::new(50.).into()).into(),
-            material: materials.add(ColorMaterial::from(Color::BEIGE)),
-            transform: Transform::from_translation(Vec3::ZERO),
-            ..default()
-        },
-        _unload: LevelUnload,
-        _identity: Player,
-        // model: SpriteBundle {
-        //     texture: asset_server.load("character.png"),
-        //     transform: Transform {
-        //         scale: Vec3::splat(0.12),
-        //         ..default()
-        //     },
-        //     ..default()
-        // },
-    });
+    let shape = shape::Circle::new(50.);
+    let material = ColorMaterial::from(Color::BEIGE);
+
+    commands.spawn(PlayerBundle::new(MaterialMesh2dBundle {
+        mesh: meshes.add(shape.into()).into(),
+        material: materials.add(material),
+        // transform: Transform::from_translation(Vec3::ZERO),
+        ..default()
+    }));
     info!("Spawning a player");
 }
 
@@ -216,59 +257,9 @@ fn show_all<T: Component>(mut components: Query<&mut Visibility, With<T>>) {
 }
 
 fn spawn_npcs(mut commands: Commands) {
-    commands.spawn(NPCBundle {
-        name: "Joe".into(),
-        in_proximity: InProximity {
-            edge_distance: 150.,
-        },
-        model: SpriteBundle {
-            sprite: Sprite {
-                color: Color::rgb(0.25, 0.25, 0.75),
-                custom_size: Some(Vec2::new(100., 100.)),
-                ..default()
-            },
-            transform: Transform::from_xyz(200., 0., 0.),
-            ..default()
-        },
-        _identity: NPC,
-        _unload: LevelUnload,
-    });
-
-    commands.spawn(NPCBundle {
-        name: "Rue".into(),
-        in_proximity: InProximity {
-            edge_distance: 150.,
-        },
-        model: SpriteBundle {
-            sprite: Sprite {
-                color: Color::rgb(0.25, 0.25, 0.75),
-                custom_size: Some(Vec2::new(100., 100.)),
-                ..default()
-            },
-            transform: Transform::from_xyz(-200., 100., 0.),
-            ..default()
-        },
-        _identity: NPC,
-        _unload: LevelUnload,
-    });
-
-    commands.spawn(NPCBundle {
-        name: "Moe".into(),
-        in_proximity: InProximity {
-            edge_distance: 150.,
-        },
-        model: SpriteBundle {
-            sprite: Sprite {
-                color: Color::rgb(0.25, 0.25, 0.75),
-                custom_size: Some(Vec2::new(100., 100.)),
-                ..default()
-            },
-            transform: Transform::from_xyz(-350., 100., 0.),
-            ..default()
-        },
-        _identity: NPC,
-        _unload: LevelUnload,
-    });
+    commands.spawn(NPCBundle::new("Joe", Transform::from_xy(200., 0.)));
+    commands.spawn(NPCBundle::new("Rue", Transform::from_xy(-200., 100.)));
+    commands.spawn(NPCBundle::new("Moe", Transform::from_xy(-350., 100.)));
 
     info!("Spawning NPC");
 }
