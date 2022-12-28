@@ -23,6 +23,7 @@ enum AppState {
     MainMenu,
     InGame,
     PauseScreen,
+    Settings,
     DialogWindow,
 }
 
@@ -86,6 +87,12 @@ fn main() {
         .add_system_set(
             SystemSet::on_exit(AppState::MainMenu)
                 .with_system(despawn_all_recursive::<MainMenuUnload>),
+        )
+        .add_system(keyboard_settings_trigger)
+        .add_system_set(SystemSet::on_enter(AppState::Settings).with_system(setup_settings))
+        .add_system_set(
+            SystemSet::on_exit(AppState::Settings)
+                .with_system(despawn_all_recursive::<SettingsUnload>),
         )
         // .add_plugin(LogDiagnosticsPlugin::default())
         // .add_plugin(FrameTimeDiagnosticsPlugin::default())
@@ -559,6 +566,7 @@ enum Stacking {
     InGame,
     DialogWindow,
     PauseScreen,
+    Settings,
     MainMenu,
 }
 
@@ -569,6 +577,7 @@ impl Stacking {
             Self::DialogWindow => 1,
             Self::PauseScreen => 2,
             Self::MainMenu => 3,
+            Self::Settings => 4,
         } as f32;
         z
     }
@@ -603,14 +612,11 @@ fn setup_main_menu(mut commands: Commands) {
 fn main_menu_trigger(mut app_state: ResMut<State<AppState>>) {
     match app_state.current() {
         // unless its an initial state, make it possible to trigger only from PauseScreen
-        AppState::PauseScreen => {
-            app_state.replace(AppState::MainMenu).unwrap();
-        }
-        AppState::MainMenu => {
-            app_state.replace(AppState::InGame).unwrap();
-        }
+        AppState::PauseScreen => app_state.replace(AppState::MainMenu).unwrap(),
+        AppState::Settings => app_state.replace(AppState::MainMenu).unwrap(),
+        AppState::MainMenu => app_state.replace(AppState::InGame).unwrap(),
         state @ (AppState::InGame | AppState::DialogWindow) => {
-            warn!("can't go to the main menu from {:?}", state);
+            warn!("can't go to the main menu from {:?}", state)
         }
     }
 }
@@ -624,13 +630,9 @@ fn keyboard_main_menu_trigger(keys: Res<Input<KeyCode>>, app_state: ResMut<State
 
 fn pause_screen_trigger(mut app_state: ResMut<State<AppState>>) {
     match app_state.current() {
-        AppState::InGame | AppState::DialogWindow => {
-            app_state.push(AppState::PauseScreen).unwrap();
-        }
-        AppState::PauseScreen => {
-            app_state.pop().unwrap();
-        }
-        AppState::MainMenu => (),
+        AppState::InGame | AppState::DialogWindow => app_state.push(AppState::PauseScreen).unwrap(),
+        AppState::PauseScreen => app_state.pop().unwrap(),
+        AppState::MainMenu | AppState::Settings => (),
     }
 }
 
@@ -650,10 +652,8 @@ fn dialog_window_trigger(
                 app_state.push(AppState::DialogWindow).unwrap();
             }
         }
-        AppState::DialogWindow => {
-            app_state.pop().unwrap();
-        }
-        AppState::PauseScreen | AppState::MainMenu => (),
+        AppState::DialogWindow => app_state.pop().unwrap(),
+        AppState::PauseScreen | AppState::MainMenu | AppState::Settings => (),
     }
 }
 
@@ -664,5 +664,74 @@ fn keyboard_dialog_window_trigger(
 ) {
     if keys.just_pressed(KeyCode::E) {
         dialog_window_trigger(app_state, nearest_npc_in_proximity);
+    }
+}
+
+#[derive(Component)]
+struct Settings;
+
+#[derive(Component)]
+struct SettingsUnload;
+
+#[derive(Bundle)]
+struct SettingsBundle {
+    sprite: SpriteBundle,
+
+    _identity: Settings,
+    _unload: SettingsUnload,
+}
+
+fn setup_settings(mut commands: Commands, asset_server: Res<AssetServer>) {
+    commands.spawn(SettingsBundle {
+        sprite: SpriteBundle {
+            sprite: Sprite {
+                color: *Color::ORANGE_RED.as_rgba().set_a(0.5),
+                custom_size: Some(Vec2::new(350.0, 250.0)),
+                ..default()
+            },
+            transform: Stacking::Settings.into(),
+            ..default()
+        },
+        _identity: Settings,
+        _unload: SettingsUnload,
+    });
+
+    commands.spawn((
+        // Create a TextBundle that has a Text with a single section.
+        TextBundle::from_section(
+            // Accepts a `String` or any type that converts into a `String`, such as `&str`
+            "Settings",
+            TextStyle {
+                font: asset_server.load("fonts/OpenSans.ttf"),
+                font_size: 80.,
+                color: Color::WHITE,
+            },
+        ) // Set the alignment of the Text
+        .with_text_alignment(TextAlignment::TOP_RIGHT)
+        // Set the style of the TextBundle itself.
+        .with_style(Style {
+            position_type: PositionType::Absolute,
+            position: UiRect {
+                left: Val::Px(500.0),
+                top: Val::Px(250.0),
+                ..default()
+            },
+            ..default()
+        }),
+        SettingsUnload,
+    ));
+}
+
+fn settings_window_trigger(mut app_state: ResMut<State<AppState>>) {
+    match app_state.current() {
+        AppState::MainMenu => app_state.push(AppState::Settings).unwrap(),
+        AppState::Settings => app_state.pop().unwrap(),
+        _ => (),
+    }
+}
+
+fn keyboard_settings_trigger(keys: Res<Input<KeyCode>>, app_state: ResMut<State<AppState>>) {
+    if keys.just_pressed(KeyCode::R) {
+        settings_window_trigger(app_state);
     }
 }
