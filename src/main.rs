@@ -18,6 +18,8 @@ use std::f32::consts::{PI, SQRT_2};
 mod unused_systems;
 use crate::unused_systems::*;
 
+type Rational32 = num_rational::Ratio<u32>;
+
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 enum AppState {
     MainMenu,
@@ -37,6 +39,54 @@ enum Label {
     SpawnNPCs,
 }
 
+#[derive(Debug, PartialEq)]
+struct ScreenResolutionRatio {
+    width: u32,
+    height: u32,
+}
+
+#[derive(Resource, Debug, PartialEq)]
+struct ScreenResolution {
+    ratio: ScreenResolutionRatio,
+    scale: u32,
+}
+
+impl ScreenResolution {
+    fn new(width: u32, height: u32, scale: u32) -> Self {
+        Self {
+            ratio: ScreenResolutionRatio { width, height },
+            scale,
+        }
+    }
+}
+
+impl TryInto<ScreenResolution> for (u32, u32) {
+    type Error = ();
+
+    fn try_into(self) -> Result<ScreenResolution, Self::Error> {
+        let (width, height) = self;
+
+        let ratio = Rational32::new(width, height);
+
+        let (width_reduced, height_reduced) = (*ratio.numer(), *ratio.denom());
+
+        match (width_reduced, height_reduced) {
+            (16, 9) | (16, 10) | (4, 3) => Ok(ScreenResolution::new(
+                width_reduced,
+                height_reduced,
+                (width as f32 / width_reduced as f32) as u32,
+            )),
+            _ => Err(()),
+        }
+    }
+}
+
+// impl Default for ScreenResolution {
+//     fn default() -> Self {
+
+//     }
+// }
+
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
@@ -46,6 +96,7 @@ fn main() {
         .insert_resource(NearestNPCinProximity::default())
         .add_event::<NextToObjEvent>()
         .add_event::<AwayFromObjEvent>()
+        .add_system(window_scaling)
         .add_system(away_from_npc_event_handler.label(Label::AwayFromNPCEventHandler))
         .add_system(next_to_npc_event_handler.after(Label::AwayFromNPCEventHandler))
         // .add_state(AppState::MainMenu)
@@ -733,5 +784,59 @@ fn settings_window_trigger(mut app_state: ResMut<State<AppState>>) {
 fn keyboard_settings_trigger(keys: Res<Input<KeyCode>>, app_state: ResMut<State<AppState>>) {
     if keys.just_pressed(KeyCode::R) {
         settings_window_trigger(app_state);
+    }
+}
+
+// temporary
+fn window_scaling(mut windows: ResMut<Windows>, keys: Res<Input<KeyCode>>) {
+    let window = windows.get_primary_mut().unwrap();
+
+    let mut height = window.requested_height();
+    let mut width = window.requested_width();
+
+    let scale = 1.05;
+
+    if keys.just_pressed(KeyCode::Equals) {
+        height *= scale;
+        width *= scale;
+        window.set_resolution(width, height);
+    }
+    if keys.just_pressed(KeyCode::Minus) {
+        height /= scale;
+        width /= scale;
+        window.set_resolution(width, height);
+    }
+}
+
+mod tests {
+    use crate::ScreenResolution;
+
+    #[test]
+    fn test_screen_resolution_from_tuple() {
+        // input, expected output
+        let supported: &[((u32, u32), ScreenResolution)] = &[
+            ((1920, 1080), ScreenResolution::new(16, 9, 120)),
+            ((1024, 768), ScreenResolution::new(4, 3, 256)),
+            // TODO somewhere enforce limit to min and max scale
+            ((4, 3), ScreenResolution::new(4, 3, 1)),
+        ];
+
+        for (resolution, expected_result) in supported {
+            let result: ScreenResolution = (*resolution).try_into().expect(&format!(
+                "must be able to convert into ScreenResolution: {:?}",
+                resolution
+            ));
+            assert_eq!(result, *expected_result);
+        }
+
+        let unsupported: &[(u32, u32)] = &[(1000, 1000)];
+        for resolution in unsupported {
+            let result: Result<ScreenResolution, ()> = (*resolution).try_into();
+            assert!(
+                result.is_err(),
+                "must not be able to convert into ScreenResolution: {:?}",
+                resolution
+            );
+        }
     }
 }
