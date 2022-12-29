@@ -18,8 +18,6 @@ use std::f32::consts::{PI, SQRT_2};
 mod unused_systems;
 use crate::unused_systems::*;
 
-type Rational32 = num_rational::Ratio<u32>;
-
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 enum AppState {
     MainMenu,
@@ -60,25 +58,35 @@ impl ScreenResolution {
     }
 }
 
-impl TryInto<ScreenResolution> for (u32, u32) {
+// impl TryInto<ScreenResolution> for (u32, u32) {
+//     type Error = ();
+
+//     fn try_into(self) -> Result<ScreenResolution, Self::Error> {
+//         TryInto::try_into(&self)
+//     }
+// }
+
+impl TryInto<ScreenResolution> for &(u32, u32) {
     type Error = ();
 
     fn try_into(self) -> Result<ScreenResolution, Self::Error> {
-        let (width, height) = self;
+        let (width, height) = *self;
 
-        let ratio = Rational32::new(width, height);
-
-        let (width_reduced, height_reduced) = (*ratio.numer(), *ratio.denom());
+        let (width_reduced, height_reduced) = {
+            let ratio = num_rational::Ratio::new(width, height);
+            (*ratio.numer(), *ratio.denom())
+        };
 
         match (width_reduced, height_reduced) {
             (16, 9) | (16, 10) | (4, 3) => Ok(ScreenResolution::new(
                 width_reduced,
                 height_reduced,
-                (width as f32 / width_reduced as f32) as u32,
+                width / width_reduced,
             )),
             _ => Err(()),
         }
     }
+
 }
 
 // impl Default for ScreenResolution {
@@ -236,11 +244,11 @@ struct NPCBundle {
     _unload: LevelUnload,
 }
 
-trait TransformExt {
+trait TransformFromXY {
     fn from_xy(x: f32, y: f32) -> Self;
 }
 
-impl TransformExt for Transform {
+impl TransformFromXY for Transform {
     fn from_xy(x: f32, y: f32) -> Self {
         Self::from_xyz(x, y, 0.)
     }
@@ -663,13 +671,14 @@ fn setup_main_menu(mut commands: Commands) {
 fn main_menu_trigger(mut app_state: ResMut<State<AppState>>) {
     match app_state.current() {
         // unless its an initial state, make it possible to trigger only from PauseScreen
-        AppState::PauseScreen => app_state.replace(AppState::MainMenu).unwrap(),
-        AppState::Settings => app_state.replace(AppState::MainMenu).unwrap(),
-        AppState::MainMenu => app_state.replace(AppState::InGame).unwrap(),
+        AppState::PauseScreen => app_state.replace(AppState::MainMenu),
+        AppState::Settings => app_state.replace(AppState::MainMenu),
+        AppState::MainMenu => app_state.replace(AppState::InGame),
         state @ (AppState::InGame | AppState::DialogWindow) => {
-            warn!("can't go to the main menu from {:?}", state)
+            warn!("can't go to the main menu from {:?}", state);
+            Ok(())
         }
-    }
+    }.unwrap()
 }
 
 fn keyboard_main_menu_trigger(keys: Res<Input<KeyCode>>, app_state: ResMut<State<AppState>>) {
@@ -681,10 +690,10 @@ fn keyboard_main_menu_trigger(keys: Res<Input<KeyCode>>, app_state: ResMut<State
 
 fn pause_screen_trigger(mut app_state: ResMut<State<AppState>>) {
     match app_state.current() {
-        AppState::InGame | AppState::DialogWindow => app_state.push(AppState::PauseScreen).unwrap(),
-        AppState::PauseScreen => app_state.pop().unwrap(),
-        AppState::MainMenu | AppState::Settings => (),
-    }
+        AppState::InGame | AppState::DialogWindow => app_state.push(AppState::PauseScreen),
+        AppState::PauseScreen => app_state.pop(),
+        AppState::MainMenu | AppState::Settings => Ok(()),
+    }.unwrap()
 }
 
 fn keyboard_pause_screen_trigger(keys: Res<Input<KeyCode>>, app_state: ResMut<State<AppState>>) {
@@ -700,12 +709,15 @@ fn dialog_window_trigger(
     match app_state.current() {
         AppState::InGame => {
             if nearest_npc_in_proximity.any() {
-                app_state.push(AppState::DialogWindow).unwrap();
+                app_state.push(AppState::DialogWindow)
+            } else {
+                Ok(())
             }
         }
-        AppState::DialogWindow => app_state.pop().unwrap(),
-        AppState::PauseScreen | AppState::MainMenu | AppState::Settings => (),
+        AppState::DialogWindow => app_state.pop(),
+        AppState::PauseScreen | AppState::MainMenu | AppState::Settings => Ok(()),
     }
+    .unwrap()
 }
 
 fn keyboard_dialog_window_trigger(
@@ -748,18 +760,15 @@ fn setup_settings(mut commands: Commands, asset_server: Res<AssetServer>) {
     });
 
     commands.spawn((
-        // Create a TextBundle that has a Text with a single section.
         TextBundle::from_section(
-            // Accepts a `String` or any type that converts into a `String`, such as `&str`
             "Settings",
             TextStyle {
                 font: asset_server.load("fonts/OpenSans.ttf"),
                 font_size: 80.,
                 color: Color::WHITE,
             },
-        ) // Set the alignment of the Text
+        )
         .with_text_alignment(TextAlignment::TOP_RIGHT)
-        // Set the style of the TextBundle itself.
         .with_style(Style {
             position_type: PositionType::Absolute,
             position: UiRect {
@@ -775,10 +784,12 @@ fn setup_settings(mut commands: Commands, asset_server: Res<AssetServer>) {
 
 fn settings_window_trigger(mut app_state: ResMut<State<AppState>>) {
     match app_state.current() {
-        AppState::MainMenu => app_state.push(AppState::Settings).unwrap(),
-        AppState::Settings => app_state.pop().unwrap(),
-        _ => (),
+        AppState::MainMenu => app_state.push(AppState::Settings),
+        AppState::PauseScreen => app_state.push(AppState::Settings),
+        AppState::Settings => app_state.pop(),
+        _ => Ok(()),
     }
+    .unwrap();
 }
 
 fn keyboard_settings_trigger(keys: Res<Input<KeyCode>>, app_state: ResMut<State<AppState>>) {
@@ -822,16 +833,16 @@ mod tests {
         ];
 
         for (resolution, expected_result) in supported {
-            let result: ScreenResolution = (*resolution).try_into().expect(&format!(
+            let result: ScreenResolution = resolution.try_into().expect(&format!(
                 "must be able to convert into ScreenResolution: {:?}",
                 resolution
             ));
-            assert_eq!(result, *expected_result);
+            assert_eq!(&result, expected_result);
         }
 
         let unsupported: &[(u32, u32)] = &[(1000, 1000)];
         for resolution in unsupported {
-            let result: Result<ScreenResolution, ()> = (*resolution).try_into();
+            let result: Result<ScreenResolution, ()> = resolution.try_into();
             assert!(
                 result.is_err(),
                 "must not be able to convert into ScreenResolution: {:?}",

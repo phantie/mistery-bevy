@@ -7,5 +7,11 @@ t:
 test:
 	cargo test
 
+tst:
+	make test
+
 fmt:
 	cargo fmt
+
+ftm:
+	make fmt
