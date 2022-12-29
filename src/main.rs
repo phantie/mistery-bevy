@@ -5,6 +5,7 @@
 //     when you can just hide them under main menu canvas, will see
 // NOTE you cannot trigger state "enter" using pop(), but can using set(state)
 // TODO add Unload component to PauseScreen and DialogWindow
+// NOTE many unknowns about screen resolutions now
 
 #![allow(dead_code, unused_imports)]
 use bevy::diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin};
@@ -58,35 +59,34 @@ impl ScreenResolution {
     }
 }
 
-// impl TryInto<ScreenResolution> for (u32, u32) {
-//     type Error = ();
+#[derive(Resource, Debug, Default)]
+struct CurrentScreenResolution {
+    value: Option<ScreenResolution>,
+}
 
-//     fn try_into(self) -> Result<ScreenResolution, Self::Error> {
-//         TryInto::try_into(&self)
-//     }
-// }
+impl Into<ScreenResolution> for (u32, u32) {
+    fn into(self) -> ScreenResolution {
+        Into::into(&self)
+    }
+}
 
-impl TryInto<ScreenResolution> for &(u32, u32) {
-    type Error = ();
-
-    fn try_into(self) -> Result<ScreenResolution, Self::Error> {
+impl Into<ScreenResolution> for &(u32, u32) {
+    // removed restrictions on ratios
+    fn into(self) -> ScreenResolution {
         let (width, height) = *self;
+
+        if width == 0 || height == 0 {
+            // could panic below if height were 0
+            panic!("invalid resolution");
+        }
 
         let (width_reduced, height_reduced) = {
             let ratio = num_rational::Ratio::new(width, height);
             (*ratio.numer(), *ratio.denom())
         };
 
-        match (width_reduced, height_reduced) {
-            (16, 9) | (16, 10) | (4, 3) => Ok(ScreenResolution::new(
-                width_reduced,
-                height_reduced,
-                width / width_reduced,
-            )),
-            _ => Err(()),
-        }
+        ScreenResolution::new(width_reduced, height_reduced, width / width_reduced)
     }
-
 }
 
 // impl Default for ScreenResolution {
@@ -100,6 +100,8 @@ fn main() {
         .add_plugins(DefaultPlugins)
         .insert_resource(ClearColor(Color::DARK_GRAY))
         .add_startup_system(set_up_camera)
+        .add_startup_system(init_screen_resolution)
+        .insert_resource(CurrentScreenResolution::default())
         .insert_resource(ProximityToObjResource::default())
         .insert_resource(NearestNPCinProximity::default())
         .add_event::<NextToObjEvent>()
@@ -678,7 +680,8 @@ fn main_menu_trigger(mut app_state: ResMut<State<AppState>>) {
             warn!("can't go to the main menu from {:?}", state);
             Ok(())
         }
-    }.unwrap()
+    }
+    .unwrap()
 }
 
 fn keyboard_main_menu_trigger(keys: Res<Input<KeyCode>>, app_state: ResMut<State<AppState>>) {
@@ -693,7 +696,8 @@ fn pause_screen_trigger(mut app_state: ResMut<State<AppState>>) {
         AppState::InGame | AppState::DialogWindow => app_state.push(AppState::PauseScreen),
         AppState::PauseScreen => app_state.pop(),
         AppState::MainMenu | AppState::Settings => Ok(()),
-    }.unwrap()
+    }
+    .unwrap()
 }
 
 fn keyboard_pause_screen_trigger(keys: Res<Input<KeyCode>>, app_state: ResMut<State<AppState>>) {
@@ -798,6 +802,21 @@ fn keyboard_settings_trigger(keys: Res<Input<KeyCode>>, app_state: ResMut<State<
     }
 }
 
+fn init_screen_resolution(
+    windows: ResMut<Windows>,
+    mut current_screen_resolution: ResMut<CurrentScreenResolution>,
+) {
+    let window = windows.get_primary().unwrap();
+
+    let width = window.requested_width() as u32;
+    let height = window.requested_height() as u32;
+
+    let res: ScreenResolution = (width, height).into();
+
+    debug!("{:?}", res);
+    current_screen_resolution.value = Some(res);
+}
+
 // temporary
 fn window_scaling(mut windows: ResMut<Windows>, keys: Res<Input<KeyCode>>) {
     let window = windows.get_primary_mut().unwrap();
@@ -825,29 +844,17 @@ mod tests {
     #[test]
     fn test_screen_resolution_from_tuple() {
         // input, expected output
-        let supported: &[((u32, u32), ScreenResolution)] = &[
+        let cases: &[((u32, u32), ScreenResolution)] = &[
             ((1920, 1080), ScreenResolution::new(16, 9, 120)),
             ((1024, 768), ScreenResolution::new(4, 3, 256)),
+            ((1000, 1000), ScreenResolution::new(1, 1, 1000)),
             // TODO somewhere enforce limit to min and max scale
             ((4, 3), ScreenResolution::new(4, 3, 1)),
         ];
 
-        for (resolution, expected_result) in supported {
-            let result: ScreenResolution = resolution.try_into().expect(&format!(
-                "must be able to convert into ScreenResolution: {:?}",
-                resolution
-            ));
+        for (resolution, expected_result) in cases {
+            let result: ScreenResolution = resolution.into();
             assert_eq!(&result, expected_result);
-        }
-
-        let unsupported: &[(u32, u32)] = &[(1000, 1000)];
-        for resolution in unsupported {
-            let result: Result<ScreenResolution, ()> = resolution.try_into();
-            assert!(
-                result.is_err(),
-                "must not be able to convert into ScreenResolution: {:?}",
-                resolution
-            );
         }
     }
 }
