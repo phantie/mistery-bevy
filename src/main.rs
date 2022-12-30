@@ -13,11 +13,14 @@ use bevy::ecs::schedule::ShouldRun;
 use bevy::prelude::*;
 use bevy::sprite::MaterialMesh2dBundle;
 use bevy::utils::{HashMap, HashSet};
+use bevy::window::PresentMode;
 use std::borrow::BorrowMut;
 use std::f32::consts::{PI, SQRT_2};
 
 mod unused_systems;
 use crate::unused_systems::*;
+
+const PACKAGE_NAME: &'static str = "mistery";
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 enum AppState {
@@ -103,11 +106,24 @@ impl Into<ScreenResolution> for &(u32, u32) {
 // }
 
 fn main() {
+    let screen_resolution = ScreenResolution::new(16, 9, 80);
+
     App::new()
-        .add_plugins(DefaultPlugins)
+        // .add_plugins(DefaultPlugins)
+        .add_plugins(DefaultPlugins.set(WindowPlugin {
+            window: WindowDescriptor {
+                title: "Mistery".to_string(),
+                width: screen_resolution.width() as f32,
+                height: screen_resolution.height() as f32,
+                present_mode: PresentMode::AutoVsync,
+                ..default()
+            },
+            ..default()
+        }))
         .insert_resource(ClearColor(Color::DARK_GRAY))
         .add_startup_system(set_up_camera)
         .add_startup_system(init_screen_resolution)
+        // .insert_resource(CurrentScreenResolution {value: Some(screen_resolution)})
         .insert_resource(CurrentScreenResolution::default())
         .insert_resource(ProximityToObjResource::default())
         .insert_resource(NearestNPCinProximity::default())
@@ -295,7 +311,7 @@ fn spawn_player(
         // transform: Transform::from_translation(Vec3::ZERO),
         ..default()
     }));
-    info!("Spawning a player");
+    debug!("Spawning a player");
 }
 
 fn not_spawned<T: Component>(components: Query<With<T>>) -> ShouldRun {
@@ -307,7 +323,17 @@ fn spawned<T: Component>(components: Query<With<T>>) -> ShouldRun {
 }
 
 fn despawn_all<T: Component>(mut commands: Commands, q: Query<Entity, With<T>>) {
-    debug!("despawning entities: {}", q.iter().enumerate().count());
+    let type_name = {
+        let fully_qualified_type_name = std::any::type_name::<T>();
+        fully_qualified_type_name
+            .strip_prefix(&format!("{}::", PACKAGE_NAME))
+            .unwrap()
+    };
+    debug!(
+        "despawning {}x entities with {} component",
+        q.iter().enumerate().count(),
+        type_name
+    );
     q.for_each(|e| commands.entity(e).despawn());
 }
 
@@ -328,7 +354,7 @@ fn spawn_npcs(mut commands: Commands) {
     commands.spawn(NPCBundle::new("Rue", Transform::from_xy(-200., 100.)));
     commands.spawn(NPCBundle::new("Moe", Transform::from_xy(-350., 100.)));
 
-    info!("Spawning NPC");
+    debug!("Spawning NPC");
 }
 
 trait ResourceClean: Resource {
@@ -434,7 +460,7 @@ fn next_to_npc_event_handler(
 
         nearest_npc_in_proximity.value.push(entity);
 
-        info!("Next to NPC {}", name.value);
+        debug!("Next to NPC {}", name.value);
     }
 }
 
@@ -454,7 +480,7 @@ fn away_from_npc_event_handler(
             .unwrap();
         nearest_npc_in_proximity.value.remove(idx);
 
-        info!("Away from NPC {}", name.value);
+        debug!("Away from NPC {}", name.value);
     }
 }
 
