@@ -17,8 +17,11 @@ use bevy::prelude::*;
 use bevy::sprite::MaterialMesh2dBundle;
 use bevy::utils::{HashMap, HashSet};
 use bevy::window::PresentMode;
+use float_to_int::*;
 use std::borrow::BorrowMut;
 use std::f32::consts::{PI, SQRT_2};
+use Val as FlexVal;
+use Val::{Percent, Px};
 
 mod unused_systems;
 use crate::unused_systems::*;
@@ -46,29 +49,29 @@ enum Label {
 
 #[derive(Debug, PartialEq)]
 struct ScreenResolutionRatio {
-    width: u32,
-    height: u32,
+    width: u16,
+    height: u16,
 }
 
 #[derive(Debug, PartialEq)]
 struct ScreenResolution {
     ratio: ScreenResolutionRatio,
-    scale: u32,
+    scale: u16,
 }
 
 impl ScreenResolution {
-    fn new(width: u32, height: u32, scale: u32) -> Self {
+    fn new(width: u16, height: u16, scale: u16) -> Self {
         Self {
             ratio: ScreenResolutionRatio { width, height },
             scale,
         }
     }
 
-    fn width(&self) -> u32 {
+    fn width(&self) -> u16 {
         self.ratio.width * self.scale
     }
 
-    fn height(&self) -> u32 {
+    fn height(&self) -> u16 {
         self.ratio.height * self.scale
     }
 }
@@ -78,13 +81,13 @@ struct CurrentScreenResolution {
     value: Option<ScreenResolution>,
 }
 
-impl Into<ScreenResolution> for (u32, u32) {
+impl Into<ScreenResolution> for (u16, u16) {
     fn into(self) -> ScreenResolution {
         Into::into(&self)
     }
 }
 
-impl Into<ScreenResolution> for &(u32, u32) {
+impl Into<ScreenResolution> for &(u16, u16) {
     // removed restrictions on ratios
     fn into(self) -> ScreenResolution {
         let (width, height) = *self;
@@ -105,9 +108,9 @@ fn main() {
     App::new()
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             window: WindowDescriptor {
-                title: "Mistery".to_string(),
-                width: screen_resolution.width() as f32,
-                height: screen_resolution.height() as f32,
+                title: "Mistery".into(),
+                width: screen_resolution.width().into(),
+                height: screen_resolution.height().into(),
                 present_mode: PresentMode::AutoVsync,
                 resizable: false,
                 // mode: WindowMode::SizedFullscreen,
@@ -529,7 +532,7 @@ fn setup_pause_screen(mut commands: Commands) {
         sprite: SpriteBundle {
             sprite: Sprite {
                 color: Color::SEA_GREEN,
-                custom_size: Some(Vec2::new(100.0, 100.0)),
+                custom_size: Some(Vec2::new(100., 100.)),
                 ..default()
             },
             transform: Stacking::PauseScreen.into(),
@@ -561,7 +564,7 @@ fn setup_dialog_window(
         sprite: SpriteBundle {
             sprite: Sprite {
                 color: Color::OLIVE,
-                custom_size: Some(Vec2::new(800.0, 200.0)),
+                custom_size: Some(Vec2::new(800., 200.)),
                 ..default()
             },
             transform: Stacking::DialogWindow.from_xy(0., -200.),
@@ -579,7 +582,7 @@ fn setup_dialog_window(
             text.as_str(),
             TextStyle {
                 font: asset_server.load("fonts/OpenSans.ttf"),
-                font_size: 100.0,
+                font_size: 100.,
                 color: Color::WHITE,
             },
         ) // Set the alignment of the Text
@@ -588,8 +591,8 @@ fn setup_dialog_window(
         .with_style(Style {
             position_type: PositionType::Absolute,
             position: UiRect {
-                bottom: Val::Px(150.0),
-                left: Val::Px(300.0),
+                bottom: Px(150.),
+                left: Px(300.),
                 ..default()
             },
             ..default()
@@ -620,12 +623,13 @@ impl Stacking {
     fn sorting(self) -> f32 {
         use Stacking::*;
         (match self {
-            InGame => 0,
+            InGame => 0u8,
             DialogWindow => 1,
             PauseScreen => 2,
             MainMenu => 3,
             Settings => 4,
-        }) as f32
+        })
+        .into()
     }
 
     fn from_xy(self, x: f32, y: f32) -> Transform {
@@ -644,7 +648,7 @@ fn setup_main_menu(mut commands: Commands) {
         sprite: SpriteBundle {
             sprite: Sprite {
                 color: *Color::INDIGO.as_rgba().set_a(0.5),
-                custom_size: Some(Vec2::new(400.0, 300.0)),
+                custom_size: Some(Vec2::new(400., 300.)),
                 ..default()
             },
             transform: Stacking::MainMenu.into(),
@@ -733,7 +737,7 @@ fn setup_settings(mut commands: Commands, asset_server: Res<AssetServer>) {
         sprite: SpriteBundle {
             sprite: Sprite {
                 color: *Color::ORANGE_RED.as_rgba().set_a(0.5),
-                custom_size: Some(Vec2::new(350.0, 250.0)),
+                custom_size: Some(Vec2::new(350., 250.)),
                 ..default()
             },
             transform: Stacking::Settings.into(),
@@ -755,8 +759,8 @@ fn setup_settings(mut commands: Commands, asset_server: Res<AssetServer>) {
         .with_style(Style {
             position_type: PositionType::Absolute,
             position: UiRect {
-                left: Val::Px(500.0),
-                top: Val::Px(250.0),
+                left: Px(500.),
+                top: Px(250.),
                 ..default()
             },
             ..default()
@@ -782,7 +786,12 @@ fn keyboard_settings_trigger(keys: Res<Input<KeyCode>>, app_state: ResMut<State<
 }
 
 fn get_screen_resolution(window: &Window) -> ScreenResolution {
-    (window.width() as u32, window.height() as u32).into()
+    static ERR: &str = "dimention must fit into u16";
+    (
+        TryIntoInt::<u16>::try_into_int(window.width()).expect(ERR),
+        TryIntoInt::<u16>::try_into_int(window.height()).expect(ERR),
+    )
+        .into()
 }
 
 fn init_screen_resolution(
@@ -815,7 +824,7 @@ mod tests {
     #[test]
     fn test_screen_resolution_from_tuple() {
         // input, expected output
-        let cases: &[((u32, u32), ScreenResolution)] = &[
+        let cases: &[((u16, u16), ScreenResolution)] = &[
             ((1920, 1080), ScreenResolution::new(16, 9, 120)),
             ((1024, 768), ScreenResolution::new(4, 3, 256)),
             ((1000, 1000), ScreenResolution::new(1, 1, 1000)),
