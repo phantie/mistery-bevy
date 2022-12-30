@@ -7,6 +7,7 @@
 // NOTE many unknowns about screen resolutions now
 // NOTE for now leaving a state uses simple entity despawn everywhere,
 //      for nicer transitions (for ex. animations), functionality must be expanded
+// NOTE found easier way to scale objects with scale factor, but it's far from over
 
 #![allow(dead_code, unused_imports)]
 use bevy::ecs::schedule::ShouldRun;
@@ -805,11 +806,7 @@ fn keyboard_settings_trigger(keys: Res<Input<KeyCode>>, app_state: ResMut<State<
 }
 
 fn get_screen_resolution(window: &Window) -> ScreenResolution {
-    (
-        window.requested_width() as u32,
-        window.requested_height() as u32,
-    )
-        .into()
+    (window.width() as u32, window.height() as u32).into()
 }
 
 fn init_screen_resolution(
@@ -818,27 +815,21 @@ fn init_screen_resolution(
 ) {
     let window = windows.get_primary().unwrap();
     current_screen_resolution.value = Some(get_screen_resolution(window));
+    // debug!("{:?}", window.resize_constraints());
     debug!("{:?}", *current_screen_resolution);
+    debug!("ScaleFactor {{ value: {:?} }}", window.scale_factor());
 }
 
-// temporary
+// temporary, for testing
 fn window_scaling(mut windows: ResMut<Windows>, keys: Res<Input<KeyCode>>) {
     let window = windows.get_primary_mut().unwrap();
 
-    let mut height = window.requested_height();
-    let mut width = window.requested_width();
-
-    let scale = 1.05;
-
+    const SCALE: f64 = 1.05;
     if keys.just_pressed(KeyCode::Equals) {
-        height *= scale;
-        width *= scale;
-        window.set_resolution(width, height);
+        window.set_scale_factor_override(Some(window.scale_factor() * SCALE));
     }
     if keys.just_pressed(KeyCode::Minus) {
-        height /= scale;
-        width /= scale;
-        window.set_resolution(width, height);
+        window.set_scale_factor_override(Some(window.scale_factor() / SCALE));
     }
 }
 
