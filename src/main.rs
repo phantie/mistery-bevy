@@ -4,8 +4,9 @@
 // OPINION it's not worth playing with entity visibility or despawning
 //     when you can just hide them under main menu canvas, will see
 // NOTE you cannot trigger state "enter" using pop(), but can using set(state)
-// TODO add Unload component to PauseScreen and DialogWindow
 // NOTE many unknowns about screen resolutions now
+// NOTE for now leaving a state uses simple entity despawn everywhere,
+//      for nicer transitions (for ex. animations), functionality must be expanded
 
 #![allow(dead_code, unused_imports)]
 use bevy::ecs::schedule::ShouldRun;
@@ -36,10 +37,6 @@ enum Label {
     NextToObjectWatcher,
     SpawnNPCs,
 }
-
-
-// use Option::None as Uninit;
-
 
 #[derive(Debug, PartialEq)]
 struct ScreenResolutionRatio {
@@ -127,7 +124,7 @@ fn main() {
         // move player only when InGame
         .add_system_set(SystemSet::on_update(AppState::InGame).with_system(player_movement))
         .add_system_set(
-            SystemSet::on_exit(AppState::InGame).with_system(despawn_all_recursive::<LevelUnload>),
+            SystemSet::on_exit(AppState::InGame).with_system(despawn_all::<LevelUnload>),
         )
         .add_system_set(
             SystemSet::on_exit(AppState::InGame)
@@ -139,24 +136,22 @@ fn main() {
         )
         .add_system(keyboard_pause_screen_trigger)
         .add_system_set(SystemSet::on_enter(AppState::PauseScreen).with_system(setup_pause_screen))
-        .add_system_set(SystemSet::on_exit(AppState::PauseScreen).with_system(close_pause_screen))
+        .add_system_set(
+            SystemSet::on_exit(AppState::PauseScreen).with_system(despawn_all::<PauseScreen>),
+        )
         .add_system(keyboard_dialog_window_trigger)
         .add_system_set(
             SystemSet::on_enter(AppState::DialogWindow).with_system(setup_dialog_window),
         )
-        .add_system_set(SystemSet::on_exit(AppState::DialogWindow).with_system(close_dialog_window))
+        .add_system_set(
+            SystemSet::on_exit(AppState::DialogWindow).with_system(despawn_all::<DialogWindow>),
+        )
         .add_system(keyboard_main_menu_trigger)
         .add_system_set(SystemSet::on_enter(AppState::MainMenu).with_system(setup_main_menu))
-        .add_system_set(
-            SystemSet::on_exit(AppState::MainMenu)
-                .with_system(despawn_all_recursive::<MainMenuUnload>),
-        )
+        .add_system_set(SystemSet::on_exit(AppState::MainMenu).with_system(despawn_all::<MainMenu>))
         .add_system(keyboard_settings_trigger)
         .add_system_set(SystemSet::on_enter(AppState::Settings).with_system(setup_settings))
-        .add_system_set(
-            SystemSet::on_exit(AppState::Settings)
-                .with_system(despawn_all_recursive::<SettingsUnload>),
-        )
+        .add_system_set(SystemSet::on_exit(AppState::Settings).with_system(despawn_all::<Settings>))
         // .add_plugin(bevy::diagnostic::LogDiagnosticsPlugin::default())
         // .add_plugin(bevy::diagnostic::FrameTimeDiagnosticsPlugin::default())
         .add_system(bevy::window::close_on_esc)
@@ -169,9 +164,6 @@ fn set_up_camera(mut commands: Commands) {
 
 #[derive(Component)]
 pub struct LevelUnload;
-
-#[derive(Component)]
-pub struct MainMenuUnload;
 
 #[derive(Component)]
 struct Player;
@@ -306,7 +298,7 @@ fn spawned<T: Component>(components: Query<With<T>>) -> ShouldRun {
     (!components.is_empty()).into()
 }
 
-fn despawn_all_recursive<T: Component>(mut commands: Commands, q: Query<Entity, With<T>>) {
+fn despawn_all<T: Component>(mut commands: Commands, q: Query<Entity, With<T>>) {
     debug!("despawning entities: {}", q.iter().enumerate().count());
     q.for_each(|e| commands.entity(e).despawn());
 }
@@ -536,10 +528,6 @@ fn setup_pause_screen(mut commands: Commands) {
     });
 }
 
-fn close_pause_screen(mut commands: Commands, query: Query<Entity, With<PauseScreen>>) {
-    commands.entity(query.single()).despawn();
-}
-
 #[derive(Component)]
 struct DialogWindow;
 
@@ -548,9 +536,6 @@ struct DialogWindowBundle {
     sprite: SpriteBundle,
     _dw: DialogWindow,
 }
-
-#[derive(Component)]
-struct NameDialogText;
 
 fn setup_dialog_window(
     mut commands: Commands,
@@ -598,17 +583,8 @@ fn setup_dialog_window(
             },
             ..default()
         }),
-        NameDialogText,
+        DialogWindow,
     ));
-}
-
-fn close_dialog_window(
-    mut commands: Commands,
-    dialog_window: Query<Entity, With<DialogWindow>>,
-    name_dialog_text: Query<Entity, With<NameDialogText>>,
-) {
-    commands.entity(dialog_window.single()).despawn();
-    commands.entity(name_dialog_text.single()).despawn();
 }
 
 #[derive(Component)]
@@ -618,8 +594,7 @@ struct MainMenu;
 struct MainMenuBundle {
     sprite: SpriteBundle,
 
-    _identity: MainMenu,
-    _unload: MainMenuUnload,
+    _state: MainMenu,
 }
 
 enum Stacking {
@@ -664,8 +639,7 @@ fn setup_main_menu(mut commands: Commands) {
             transform: Stacking::MainMenu.into(),
             ..default()
         },
-        _identity: MainMenu,
-        _unload: MainMenuUnload,
+        _state: MainMenu,
     });
 }
 
@@ -736,15 +710,11 @@ fn keyboard_dialog_window_trigger(
 #[derive(Component)]
 struct Settings;
 
-#[derive(Component)]
-struct SettingsUnload;
-
 #[derive(Bundle)]
 struct SettingsBundle {
     sprite: SpriteBundle,
 
-    _identity: Settings,
-    _unload: SettingsUnload,
+    _state: Settings,
 }
 
 fn setup_settings(mut commands: Commands, asset_server: Res<AssetServer>) {
@@ -758,8 +728,7 @@ fn setup_settings(mut commands: Commands, asset_server: Res<AssetServer>) {
             transform: Stacking::Settings.into(),
             ..default()
         },
-        _identity: Settings,
-        _unload: SettingsUnload,
+        _state: Settings,
     });
 
     commands.spawn((
@@ -781,7 +750,7 @@ fn setup_settings(mut commands: Commands, asset_server: Res<AssetServer>) {
             },
             ..default()
         }),
-        SettingsUnload,
+        Settings,
     ));
 }
 
