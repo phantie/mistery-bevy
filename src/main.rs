@@ -8,7 +8,6 @@
 // NOTE many unknowns about screen resolutions now
 
 #![allow(dead_code, unused_imports)]
-use bevy::diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin};
 use bevy::ecs::schedule::ShouldRun;
 use bevy::prelude::*;
 use bevy::sprite::MaterialMesh2dBundle;
@@ -38,13 +37,17 @@ enum Label {
     SpawnNPCs,
 }
 
+
+// use Option::None as Uninit;
+
+
 #[derive(Debug, PartialEq)]
 struct ScreenResolutionRatio {
     width: u32,
     height: u32,
 }
 
-#[derive(Resource, Debug, PartialEq)]
+#[derive(Debug, PartialEq)]
 struct ScreenResolution {
     ratio: ScreenResolutionRatio,
     scale: u32,
@@ -74,7 +77,6 @@ impl Into<ScreenResolution> for &(u32, u32) {
     // removed restrictions on ratios
     fn into(self) -> ScreenResolution {
         let (width, height) = *self;
-
         if width == 0 || height == 0 {
             // could panic below if height were 0
             panic!("invalid resolution");
@@ -155,8 +157,8 @@ fn main() {
             SystemSet::on_exit(AppState::Settings)
                 .with_system(despawn_all_recursive::<SettingsUnload>),
         )
-        // .add_plugin(LogDiagnosticsPlugin::default())
-        // .add_plugin(FrameTimeDiagnosticsPlugin::default())
+        // .add_plugin(bevy::diagnostic::LogDiagnosticsPlugin::default())
+        // .add_plugin(bevy::diagnostic::FrameTimeDiagnosticsPlugin::default())
         .add_system(bevy::window::close_on_esc)
         .run();
 }
@@ -305,11 +307,8 @@ fn spawned<T: Component>(components: Query<With<T>>) -> ShouldRun {
 }
 
 fn despawn_all_recursive<T: Component>(mut commands: Commands, q: Query<Entity, With<T>>) {
-    debug!("despawning entities");
-    for (i, e) in q.iter().enumerate() {
-        debug!("\t{}", i);
-        commands.entity(e).despawn();
-    }
+    debug!("despawning entities: {}", q.iter().enumerate().count());
+    q.for_each(|e| commands.entity(e).despawn());
 }
 
 fn hide_all<T: Component>(mut components: Query<&mut Visibility, With<T>>) {
@@ -802,19 +801,21 @@ fn keyboard_settings_trigger(keys: Res<Input<KeyCode>>, app_state: ResMut<State<
     }
 }
 
+fn get_screen_resolution(window: &Window) -> ScreenResolution {
+    (
+        window.requested_width() as u32,
+        window.requested_height() as u32,
+    )
+        .into()
+}
+
 fn init_screen_resolution(
-    windows: ResMut<Windows>,
+    windows: Res<Windows>,
     mut current_screen_resolution: ResMut<CurrentScreenResolution>,
 ) {
     let window = windows.get_primary().unwrap();
-
-    let width = window.requested_width() as u32;
-    let height = window.requested_height() as u32;
-
-    let res: ScreenResolution = (width, height).into();
-
-    debug!("{:?}", res);
-    current_screen_resolution.value = Some(res);
+    current_screen_resolution.value = Some(get_screen_resolution(window));
+    debug!("{:?}", *current_screen_resolution);
 }
 
 // temporary
