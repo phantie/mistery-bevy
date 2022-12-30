@@ -57,6 +57,14 @@ impl ScreenResolution {
             scale,
         }
     }
+
+    fn width(&self) -> u32 {
+        self.ratio.width * self.scale
+    }
+
+    fn height(&self) -> u32 {
+        self.ratio.height * self.scale
+    }
 }
 
 #[derive(Resource, Debug, Default)]
@@ -825,6 +833,7 @@ mod tests {
         for (resolution, expected_result) in cases {
             let result: ScreenResolution = resolution.into();
             assert_eq!(&result, expected_result);
+            assert_eq!(resolution, &(result.width(), result.height()));
         }
     }
 }
