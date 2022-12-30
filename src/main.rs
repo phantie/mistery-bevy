@@ -8,6 +8,8 @@
 // NOTE for now leaving a state uses simple entity despawn everywhere,
 //      for nicer transitions (for ex. animations), functionality must be expanded
 // NOTE found easier way to scale objects with scale factor, but it's far from over
+// NOTE WindowMode::Fullscreen does not support properly scale UI,
+//      and messes up UI of the operating system (at least on Mac it does)
 
 #![allow(dead_code, unused_imports)]
 use bevy::ecs::schedule::ShouldRun;
@@ -86,10 +88,7 @@ impl Into<ScreenResolution> for &(u32, u32) {
     // removed restrictions on ratios
     fn into(self) -> ScreenResolution {
         let (width, height) = *self;
-        if width == 0 || height == 0 {
-            // could panic below if height were 0
-            panic!("invalid resolution");
-        }
+        assert!(width > 0 && height > 0, "invalid resolution");
 
         let (width_reduced, height_reduced) = {
             let ratio = num_rational::Ratio::new(width, height);
@@ -100,23 +99,18 @@ impl Into<ScreenResolution> for &(u32, u32) {
     }
 }
 
-// impl Default for ScreenResolution {
-//     fn default() -> Self {
-
-//     }
-// }
-
 fn main() {
     let screen_resolution = ScreenResolution::new(16, 9, 80);
 
     App::new()
-        // .add_plugins(DefaultPlugins)
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             window: WindowDescriptor {
                 title: "Mistery".to_string(),
                 width: screen_resolution.width() as f32,
                 height: screen_resolution.height() as f32,
                 present_mode: PresentMode::AutoVsync,
+                resizable: false,
+                // mode: WindowMode::SizedFullscreen,
                 ..default()
             },
             ..default()
@@ -145,19 +139,17 @@ fn main() {
                 .with_system(spawn_npcs)
                 .label(Label::SpawnNPCs),
         )
-        .add_system_set(SystemSet::on_update(AppState::InGame).with_system(next_to_obj_watcher))
-        // move player only when InGame
-        .add_system_set(SystemSet::on_update(AppState::InGame).with_system(player_movement))
         .add_system_set(
-            SystemSet::on_exit(AppState::InGame).with_system(despawn_all::<LevelUnload>),
+            SystemSet::on_update(AppState::InGame)
+                .with_system(next_to_obj_watcher)
+                // move player only when InGame
+                .with_system(player_movement),
         )
         .add_system_set(
             SystemSet::on_exit(AppState::InGame)
-                .with_system(clean_resource::<ProximityToObjResource>),
-        )
-        .add_system_set(
-            SystemSet::on_exit(AppState::InGame)
-                .with_system(clean_resource::<NearestNPCinProximity>),
+                .with_system(despawn_all::<LevelUnload>)
+                .with_system(reset_resource::<ProximityToObjResource>)
+                .with_system(reset_resource::<NearestNPCinProximity>),
         )
         .add_system(keyboard_pause_screen_trigger)
         .add_system_set(SystemSet::on_enter(AppState::PauseScreen).with_system(setup_pause_screen))
@@ -358,24 +350,8 @@ fn spawn_npcs(mut commands: Commands) {
     debug!("Spawning NPC");
 }
 
-trait ResourceClean: Resource {
-    fn clean(&mut self);
-}
-
-impl ResourceClean for ProximityToObjResource {
-    fn clean(&mut self) {
-        self.values.clear()
-    }
-}
-
-impl ResourceClean for NearestNPCinProximity {
-    fn clean(&mut self) {
-        self.value.clear()
-    }
-}
-
-fn clean_resource<T: ResourceClean>(mut resource: ResMut<T>) {
-    resource.clean()
+fn reset_resource<T: Resource + Default>(mut commands: Commands) {
+    commands.insert_resource(T::default());
 }
 
 #[derive(Resource, Default)]
