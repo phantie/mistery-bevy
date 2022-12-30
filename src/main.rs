@@ -632,14 +632,14 @@ enum Stacking {
 
 impl Stacking {
     fn sorting(self) -> f32 {
-        let z = match self {
-            Self::InGame => 0,
-            Self::DialogWindow => 1,
-            Self::PauseScreen => 2,
-            Self::MainMenu => 3,
-            Self::Settings => 4,
-        } as f32;
-        z
+        use Stacking::*;
+        (match self {
+            InGame => 0,
+            DialogWindow => 1,
+            PauseScreen => 2,
+            MainMenu => 3,
+            Settings => 4,
+        }) as f32
     }
 
     fn from_xy(self, x: f32, y: f32) -> Transform {
