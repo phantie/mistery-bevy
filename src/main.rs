@@ -17,6 +17,7 @@ use bevy::prelude::*;
 use bevy::sprite::MaterialMesh2dBundle;
 use bevy::utils::{HashMap, HashSet};
 use bevy::window::PresentMode;
+use bevy::window::WindowResized;
 use float_to_int::*;
 use std::borrow::BorrowMut;
 use std::f32::consts::{PI, SQRT_2};
@@ -56,6 +57,8 @@ struct ScreenResolutionRatio {
 #[derive(Debug, PartialEq)]
 struct ScreenResolution {
     ratio: ScreenResolutionRatio,
+    // TODO find a better name, because it's confusing,
+    // due to similiraty with "scale factor"
     scale: u16,
 }
 
@@ -176,6 +179,7 @@ fn main() {
         // .add_plugin(bevy::diagnostic::FrameTimeDiagnosticsPlugin::default())
         .add_system(bevy::window::close_on_esc)
         .add_system(window_fullscreen)
+        .add_system(on_window_resize)
         .run();
 }
 
@@ -786,21 +790,12 @@ fn keyboard_settings_trigger(keys: Res<Input<KeyCode>>, app_state: ResMut<State<
     }
 }
 
-fn get_screen_resolution(window: &Window) -> ScreenResolution {
-    static ERR: &str = "dimention must fit into u16";
-    (
-        TryIntoInt::<u16>::try_into_int(window.width()).expect(ERR),
-        TryIntoInt::<u16>::try_into_int(window.height()).expect(ERR),
-    )
-        .into()
-}
-
 fn init_screen_resolution(
     windows: Res<Windows>,
     mut current_screen_resolution: ResMut<CurrentScreenResolution>,
 ) {
     let window = windows.get_primary().unwrap();
-    current_screen_resolution.value = Some(get_screen_resolution(window));
+    current_screen_resolution.value = Some(window.resolution());
     // debug!("{:?}", window.resize_constraints());
     debug!("{:?}", *current_screen_resolution);
     debug!("ScaleFactor {{ value: {:?} }}", window.scale_factor());
@@ -808,14 +803,14 @@ fn init_screen_resolution(
 
 // temporary, for testing
 fn window_scaling(mut windows: ResMut<Windows>, keys: Res<Input<KeyCode>>) {
-    const SCALE: f64 = 1.05;
+    const SCALE: f64 = 0.1;
     if keys.just_pressed(KeyCode::Equals) {
         let window = windows.get_primary_mut().unwrap();
-        window.set_scale_factor_override(Some(window.scale_factor() * SCALE));
+        window.set_scale_factor_override(Some(window.scale_factor() + SCALE));
     }
     if keys.just_pressed(KeyCode::Minus) {
         let window = windows.get_primary_mut().unwrap();
-        window.set_scale_factor_override(Some(window.scale_factor() / SCALE));
+        window.set_scale_factor_override(Some(window.scale_factor() - SCALE));
     }
 }
 
@@ -829,6 +824,7 @@ trait WindowExt {
     fn go_fullscreen(&mut self) -> Result<(), Self::Error>;
     fn go_windowed(&mut self) -> Result<(), Self::Error>;
     fn is_valid_mode(&self) -> bool;
+    fn resolution(&self) -> ScreenResolution;
 }
 
 impl WindowExt for Window {
@@ -865,6 +861,15 @@ impl WindowExt for Window {
     fn is_valid_mode(&self) -> bool {
         self.is_fullscreen() || self.is_windowed()
     }
+
+    fn resolution(&self) -> ScreenResolution {
+        static ERR: &str = "dimention must fit into u16";
+        (
+            TryIntoInt::<u16>::try_into_int(self.width()).expect(ERR),
+            TryIntoInt::<u16>::try_into_int(self.height()).expect(ERR),
+        )
+            .into()
+    }
 }
 
 fn window_fullscreen(mut windows: ResMut<Windows>, keys: Res<Input<KeyCode>>) {
@@ -877,6 +882,17 @@ fn window_fullscreen(mut windows: ResMut<Windows>, keys: Res<Input<KeyCode>>) {
         } else if window.is_windowed() {
             window.go_fullscreen().unwrap();
         }
+    }
+}
+
+fn on_window_resize(windows: Res<Windows>, mut resize_reader: EventReader<WindowResized>) {
+    let window = windows.get_primary().unwrap();
+    for _e in resize_reader.iter() {
+        debug!(
+            "resized: {:?}, scale factor {}",
+            window.resolution(),
+            window.scale_factor()
+        );
     }
 }
 
