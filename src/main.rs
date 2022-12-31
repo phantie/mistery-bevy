@@ -175,6 +175,7 @@ fn main() {
         // .add_plugin(bevy::diagnostic::LogDiagnosticsPlugin::default())
         // .add_plugin(bevy::diagnostic::FrameTimeDiagnosticsPlugin::default())
         .add_system(bevy::window::close_on_esc)
+        .add_system(window_fullscreen)
         .run();
 }
 
@@ -807,14 +808,75 @@ fn init_screen_resolution(
 
 // temporary, for testing
 fn window_scaling(mut windows: ResMut<Windows>, keys: Res<Input<KeyCode>>) {
-    let window = windows.get_primary_mut().unwrap();
-
     const SCALE: f64 = 1.05;
     if keys.just_pressed(KeyCode::Equals) {
+        let window = windows.get_primary_mut().unwrap();
         window.set_scale_factor_override(Some(window.scale_factor() * SCALE));
     }
     if keys.just_pressed(KeyCode::Minus) {
+        let window = windows.get_primary_mut().unwrap();
         window.set_scale_factor_override(Some(window.scale_factor() / SCALE));
+    }
+}
+
+trait WindowExt {
+    const WINDOWED: WindowMode;
+    const FULLSCREEN: WindowMode;
+    type Error;
+
+    fn is_fullscreen(&self) -> bool;
+    fn is_windowed(&self) -> bool;
+    fn go_fullscreen(&mut self) -> Result<(), Self::Error>;
+    fn go_windowed(&mut self) -> Result<(), Self::Error>;
+    fn is_valid_mode(&self) -> bool;
+}
+
+impl WindowExt for Window {
+    const WINDOWED: WindowMode = WindowMode::Windowed;
+    const FULLSCREEN: WindowMode = WindowMode::SizedFullscreen;
+    type Error = ();
+
+    fn is_fullscreen(&self) -> bool {
+        self.mode() == Self::FULLSCREEN
+    }
+
+    fn is_windowed(&self) -> bool {
+        self.mode() == Self::WINDOWED
+    }
+
+    fn go_fullscreen(&mut self) -> Result<(), Self::Error> {
+        if self.is_windowed() {
+            self.set_mode(Self::FULLSCREEN);
+            Ok(())
+        } else {
+            Err(())
+        }
+    }
+
+    fn go_windowed(&mut self) -> Result<(), Self::Error> {
+        if self.is_fullscreen() {
+            self.set_mode(Self::WINDOWED);
+            Ok(())
+        } else {
+            Err(())
+        }
+    }
+
+    fn is_valid_mode(&self) -> bool {
+        self.is_fullscreen() || self.is_windowed()
+    }
+}
+
+fn window_fullscreen(mut windows: ResMut<Windows>, keys: Res<Input<KeyCode>>) {
+    if keys.just_pressed(KeyCode::F) {
+        let window = windows.get_primary_mut().unwrap();
+        assert!(window.is_valid_mode());
+
+        if window.is_fullscreen() {
+            window.go_windowed().unwrap();
+        } else if window.is_windowed() {
+            window.go_fullscreen().unwrap();
+        }
     }
 }
 
