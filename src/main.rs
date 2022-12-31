@@ -12,6 +12,7 @@
 //      and messes up UI of the operating system (at least on Mac it does)
 
 #![allow(dead_code, unused_imports)]
+use bevy::ecs::event::ManualEventReader;
 use bevy::ecs::schedule::ShouldRun;
 use bevy::prelude::*;
 use bevy::sprite::MaterialMesh2dBundle;
@@ -885,14 +886,22 @@ fn window_fullscreen(mut windows: ResMut<Windows>, keys: Res<Input<KeyCode>>) {
     }
 }
 
-fn on_window_resize(windows: Res<Windows>, mut resize_reader: EventReader<WindowResized>) {
-    let window = windows.get_primary().unwrap();
+fn on_window_resize(
+    windows: Res<Windows>,
+    mut resize_reader: EventReader<WindowResized>,
+    mut current_screen_resolution: ResMut<CurrentScreenResolution>,
+) {
+    // there supposed to be max 1 window max, iter because to make it's more idiomatic and...
+    // NOTE don't know why 2 "resized" events received at the very beginning
+    // NOTE changing WindowMode it also sends 2 same events
     for _e in resize_reader.iter() {
+        let window = windows.get_primary().unwrap();
         debug!(
-            "resized: {:?}, scale factor {}",
+            "Resized: {:?}; ScaleFactor {{ value: {} }}",
             window.resolution(),
-            window.scale_factor()
+            window.scale_factor(),
         );
+        current_screen_resolution.value = Some(window.resolution());
     }
 }
 
