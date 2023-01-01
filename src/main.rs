@@ -10,6 +10,8 @@
 // NOTE found easier way to scale objects with scale factor, but it's far from over
 // NOTE WindowMode::Fullscreen does not support properly scale UI,
 //      and messes up UI of the operating system (at least on Mac it does)
+// NOTE spawning UI entities using some hierarchy is tempting, but I get crashes
+//      trying to spawn SpriteBundle (for ex.), with TextBundle it does not
 
 #![allow(dead_code, unused_imports)]
 use bevy::ecs::event::ManualEventReader;
